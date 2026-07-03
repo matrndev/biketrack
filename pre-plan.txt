@@ -1,0 +1,43 @@
+
+I want to make an app where each member of a certain cycling group (5 members for example) will have an app installed on their phone and the phone will be attached on the handlebars (or there could also be a off-handlebars sound-only mode)
+
+We will be using React Native and Firebase.
+There will be no conecpt of user registration/login, since that is annoying. Instead, a user will be able to create a group, in which they will become a group leader, and other members wanting to join will be able to do so via a QR code (that will be scanned with the app, so no links) or a short 6 digit code.
+
+note: for now, ignore anything that is ~crossed out~
+
+Features I'd like to implement:
+- real-time location tracking of members
+- location will show up as pins on a map
+- location will show up also as a "train view", showing gaps in meters inbetween riders (one vertical line with rider circles on it), i think here for now we will use straight-line distance calculation
+- big comms buttons that can be easily tapped when riding
+    - e.g. pothole, slowing, stopping, regroup here, turning left/right, car back
+    - drops a pin at the location where button was tapped and notifies people also when they get infront of the pin
+    - spoken notifications
+    - ~could also have simple yes/no questions and people would respond with a tap~
+    - severity value (critical/important/low)
+- alerts when rider's connection dropped / too far from last person in group
+- ~crash detection? (big question mark here, it has to be reliable, minimize false positives)~
+
+Biggest problems that need to be solved:
+- battery usage
+    - oled dark theme
+    - ability to turn off location sharing and only use comms
+    - audio-only mode with screen off
+- clock sync
+    - for n sec ago
+    - either sync to server or
+    - timestamps are always sent from server only <-- that's probably better
+- connectivity
+    - ~if we use internet, there may be unexpected dropouts of mobile data~
+    - show heartbeats (phoebe last updated 5s ago)
+    - display non-distractive (must not overlap important elements) connection alerts
+    - ~dont even try to solve this right now, we are using the internet and mobile data. i dont care. i honestly don't know the best easy solution to this~
+    - ~maybe we could use some sort of a mesh system~
+- android background restrictions
+    - this is a given
+    - make sure the phone doesn't kill our app (especially when in screen-off mode)
+    - gps tracking must be reliable
+- comms dedup -- if there are two same for example pothole alerts in one place, only show one
+
+Now, make a PLAN.md. If anything needs clarification, now is the time to ask.
