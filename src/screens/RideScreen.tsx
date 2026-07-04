@@ -1,9 +1,12 @@
-// Ride screen (M3): the train view. One continuous vertical line top → bottom,
-// a circle per rider ordered front → back along the direction of travel, with
-// the space between circles proportional to the real gap in meters. Each rider
-// shows a live speed readout. Over-threshold gaps turn the segment yellow and
-// raise a non-distractive bottom banner + vibration (PLAN §5.5). Always pushed
-// on top of the Group screen, which keeps handling group-gone cleanup beneath.
+// Ride screen (M3+M4): the train view plus the comms dock. One continuous
+// vertical line top → bottom, a circle per rider ordered front → back along
+// the direction of travel, with the space between circles proportional to the
+// real gap in meters. Each rider shows a live speed readout. Over-threshold
+// gaps turn the segment yellow and raise a non-distractive bottom banner +
+// vibration (PLAN §5.5). Comms: floating chat button bottom-right → big-button
+// menu; active pins show as a strip under the header and are spoken via the
+// announcer hook. Always pushed on top of the Group screen, which keeps
+// handling group-gone cleanup beneath.
 import React, { useEffect, useState } from 'react';
 import {
   Text,
@@ -21,6 +24,15 @@ import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
 import { useGroup, endRide } from '../groups';
 import { buildTrain, GAP_ALERT_METERS, RiderPoint } from '../train';
+import {
+  COMM_DEFS,
+  CommType,
+  activeComms,
+  sendComm,
+  useComms,
+  useCommsAnnouncer,
+} from '../comms';
+import CommsDock, { severityColor } from '../CommsDock';
 import { useServerTimeOffset, serverNow, agoLabel } from '../time';
 import { theme } from '../theme';
 
@@ -49,6 +61,8 @@ export default function RideScreen() {
   const groupId = useStore((s) => s.groupId);
   const group = useGroup(groupId);
   const offset = useServerTimeOffset();
+  const comms = useComms(groupId, offset);
+  useCommsAnnouncer(comms, uid, offset);
   const [, tick] = useState(0);
 
   const rideStartedAt = group?.meta.rideStartedAt ?? null;
@@ -100,6 +114,22 @@ export default function RideScreen() {
   }
 
   const isLeader = group.meta.leaderId === uid;
+  const pins = activeComms(comms, serverNow(offset));
+
+  // One tap → pin at our current fix. Instant haptic confirm (the rider is
+  // moving, not watching the screen); errors surface, success is silent.
+  const sendAlert = (type: CommType) => {
+    const fix = useStore.getState().lastFix;
+    if (!groupId || !uid) return;
+    if (!fix) {
+      Alert.alert('No GPS fix yet', 'Comms are pinned to your position — wait for GPS.');
+      return;
+    }
+    Vibration.vibrate(60);
+    sendComm(groupId, uid, type, fix.lat, fix.lng, offset).catch((e: any) =>
+      Alert.alert('Could not send', String(e?.message ?? e))
+    );
+  };
 
   const confirmEnd = () => {
     Alert.alert('End ride?', 'Everyone returns to the group screen.', [
@@ -176,42 +206,71 @@ export default function RideScreen() {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
-        {train.order.length > 0 && (
-          <View style={styles.train}>
-            {/* The one continuous line; riders' dots sit on top of it. */}
-            <View style={styles.trainLine} />
-            {train.order.map((rider, i) => {
-              const gap = train.gaps[i]; // to the rider behind
-              const wide = gap != null && gap > GAP_ALERT_METERS;
-              return (
-                <View key={rider.id}>
-                  {riderRow(rider.id, false)}
-                  {gap != null && (
-                    <View style={[styles.gapSegment, { height: gapHeight(gap) }]}>
-                      {wide && <View style={styles.gapLineWide} />}
-                      <Text style={[styles.gapLabel, wide && styles.gapLabelWide]}>
-                        {Math.round(gap)} m
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        )}
+      {pins.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.commsStrip}
+          contentContainerStyle={styles.commsStripContent}
+        >
+          {pins.map((c) => (
+            <View
+              key={c.id}
+              style={[styles.commChip, { borderColor: severityColor(c.severity) }]}
+            >
+              <Text style={styles.commChipText}>
+                {COMM_DEFS[c.type].icon} {COMM_DEFS[c.type].label}
+                {c.count > 1 ? ` ×${c.count}` : ''}
+                {' · '}
+                {agoLabel(c.createdAt, offset)}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+      )}
 
-        {train.order.length === 0 && (
-          <Text style={styles.emptyHint}>Waiting for GPS fixes…</Text>
-        )}
+      {/* The dock floats over the train only — the gap banner and the leader's
+          footer stack below it, so alerts never cover the comms button. */}
+      <View style={styles.body}>
+        <ScrollView contentContainerStyle={styles.container}>
+          {train.order.length > 0 && (
+            <View style={styles.train}>
+              {/* The one continuous line; riders' dots sit on top of it. */}
+              <View style={styles.trainLine} />
+              {train.order.map((rider, i) => {
+                const gap = train.gaps[i]; // to the rider behind
+                const wide = gap != null && gap > GAP_ALERT_METERS;
+                return (
+                  <View key={rider.id}>
+                    {riderRow(rider.id, false)}
+                    {gap != null && (
+                      <View style={[styles.gapSegment, { height: gapHeight(gap) }]}>
+                        {wide && <View style={styles.gapLineWide} />}
+                        <Text style={[styles.gapLabel, wide && styles.gapLabelWide]}>
+                          {Math.round(gap)} m
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
-        {unlocated.length > 0 && (
-          <View style={styles.noSignalBlock}>
-            <Text style={styles.noSignalLabel}>NO POSITION</Text>
-            {unlocated.map((memberId) => riderRow(memberId, true))}
-          </View>
-        )}
-      </ScrollView>
+          {train.order.length === 0 && (
+            <Text style={styles.emptyHint}>Waiting for GPS fixes…</Text>
+          )}
+
+          {unlocated.length > 0 && (
+            <View style={styles.noSignalBlock}>
+              <Text style={styles.noSignalLabel}>NO POSITION</Text>
+              {unlocated.map((memberId) => riderRow(memberId, true))}
+            </View>
+          )}
+        </ScrollView>
+
+        <CommsDock onSend={sendAlert} />
+      </View>
 
       {gapAlert && (
         <View style={styles.alertBanner}>
@@ -264,6 +323,25 @@ const styles = StyleSheet.create({
   container: {
     padding: theme.spacing(2),
     flexGrow: 1,
+  },
+  body: { flex: 1 },
+  commsStrip: { flexGrow: 0 },
+  commsStripContent: {
+    paddingHorizontal: theme.spacing(2),
+    paddingTop: theme.spacing(1.5),
+    gap: theme.spacing(1),
+  },
+  commChip: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1.5,
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: theme.spacing(1.25),
+    paddingVertical: theme.spacing(0.75),
+  },
+  commChipText: {
+    color: theme.colors.text,
+    fontSize: theme.font.small,
+    fontFamily: theme.family.medium,
   },
   train: {
     flexGrow: 1,

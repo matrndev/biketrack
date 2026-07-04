@@ -193,11 +193,15 @@ export default function GroupScreen() {
               {rideActive ? 'Back to ride' : 'Start ride'}
             </Text>
           </Pressable>
+        ) : rideActive ? (
+          // Members can back out of the ride to check the roster/QR — give
+          // them a way back in (the navigate effect only fires on ride start).
+          <Pressable style={styles.startButton} onPress={() => navigation.navigate('Ride')}>
+            <Text style={styles.startText}>Back to ride</Text>
+          </Pressable>
         ) : (
           <Text style={styles.waitingHint}>
-            {rideActive
-              ? 'Ride in progress'
-              : 'Waiting for the leader to start the ride…'}
+            Waiting for the leader to start the ride…
           </Text>
         )}
         <Pressable style={styles.leaveButton} onPress={confirmLeave}>

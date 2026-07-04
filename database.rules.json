@@ -31,6 +31,13 @@
           "$uid": {
             ".write": "auth != null && auth.uid === $uid"
           }
+        },
+
+        "comms": {
+          "$commId": {
+            ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).exists()",
+            ".validate": "newData.hasChildren(['type', 'severity', 'lat', 'lng', 'dedupKey', 'createdBy', 'createdAt', 'expiresAt', 'count'])"
+          }
         }
       }
     },
