@@ -11,6 +11,7 @@ import HomeScreen from './screens/HomeScreen';
 import CreateGroupScreen from './screens/CreateGroupScreen';
 import JoinScreen from './screens/JoinScreen';
 import GroupScreen from './screens/GroupScreen';
+import RideScreen from './screens/RideScreen';
 import { theme } from './theme';
 
 export type RootStackParamList = {
@@ -18,7 +19,8 @@ export type RootStackParamList = {
   Home: undefined;
   CreateGroup: undefined;
   Join: undefined;
-  Group: undefined;
+  Group: { allowDuringRide?: boolean } | undefined;
+  Ride: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -119,6 +121,7 @@ export default function Navigation() {
             />
             <Stack.Screen name="Join" component={JoinScreen} options={{ title: 'Join group' }} />
             <Stack.Screen name="Group" component={GroupScreen} options={{ title: 'Group' }} />
+            <Stack.Screen name="Ride" component={RideScreen} options={{ title: 'Ride' }} />
           </>
         ) : (
           <Stack.Screen

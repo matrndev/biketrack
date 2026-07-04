@@ -28,6 +28,8 @@ export type GroupMeta = {
   leaderId: string;
   createdAt: number;
   joinCode: string;
+  rideStartedAt?: number;
+  rideStartedBy?: string;
 };
 
 export type Group = {
@@ -158,6 +160,14 @@ export async function leaveGroup(groupId: string, uid: string): Promise<void> {
     updates[`groups/${groupId}/members/${next}/role`] = 'leader';
   }
   await update(ref(db), updates);
+}
+
+/** Leader action: mark the group ride as started so every member enters Ride. */
+export async function startRide(groupId: string, uid: string): Promise<void> {
+  await update(ref(db, `groups/${groupId}/meta`), {
+    rideStartedAt: serverTimestamp(),
+    rideStartedBy: uid,
+  });
 }
 
 /**

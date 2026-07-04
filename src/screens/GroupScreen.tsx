@@ -9,23 +9,26 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
-import { useGroup, leaveGroup, qrPayload, Member } from '../groups';
+import { useGroup, leaveGroup, qrPayload, startRide, Member } from '../groups';
 import { useServerTimeOffset, agoLabel } from '../time';
 import { requestTrackingPermissions, startTracking } from '../location';
 import { theme } from '../theme';
 
 export default function GroupScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Group'>>();
   const uid = useStore((s) => s.uid);
   const groupId = useStore((s) => s.groupId);
   const setGroupId = useStore((s) => s.setGroupId);
   const group = useGroup(groupId);
   const offset = useServerTimeOffset();
   const [leaving, setLeaving] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [trackErr, setTrackErr] = useState<string | null>(null);
   const [, tick] = useState(0);
 
@@ -34,8 +37,10 @@ export default function GroupScreen() {
     if (group === null && !leaving) {
       setGroupId(null);
       navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+    } else if (group?.meta.rideStartedAt && !route.params?.allowDuringRide) {
+      navigation.reset({ index: 0, routes: [{ name: 'Ride' }] });
     }
-  }, [group, leaving]);
+  }, [group, leaving, route.params?.allowDuringRide]);
 
   // The interactive permission ask lives here (useRideLifecycle only
   // auto-starts once permissions exist). Idempotent, so re-mounts are fine.
@@ -104,6 +109,17 @@ export default function GroupScreen() {
     );
   };
 
+  const beginRide = async () => {
+    if (!groupId || !uid || !isLeader || starting) return;
+    setStarting(true);
+    try {
+      await startRide(groupId, uid);
+    } catch (e: any) {
+      Alert.alert('Could not start ride', String(e?.message ?? e));
+      setStarting(false);
+    }
+  };
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -158,6 +174,23 @@ export default function GroupScreen() {
 
       <View style={styles.footer}>
         {trackErr && <Text style={styles.trackErr}>⚠ {trackErr}</Text>}
+        {group.meta.rideStartedAt ? (
+          <Pressable style={styles.startButton} onPress={() => navigation.navigate('Ride')}>
+            <Text style={styles.startText}>Return to ride</Text>
+          </Pressable>
+        ) : isLeader ? (
+          <Pressable
+            style={[styles.startButton, starting && styles.buttonDisabled]}
+            disabled={starting}
+            onPress={beginRide}
+          >
+            <Text style={styles.startText}>{starting ? 'Starting...' : 'Start ride'}</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.waitingPanel}>
+            <Text style={styles.waitingText}>Waiting for the leader to start the ride.</Text>
+          </View>
+        )}
         <Pressable style={styles.leaveButton} onPress={confirmLeave}>
           <Text style={styles.leaveText}>Leave group</Text>
         </Pressable>
@@ -258,9 +291,35 @@ const styles = StyleSheet.create({
   },
   footer: {
     padding: theme.spacing(2),
+    gap: theme.spacing(1),
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.bg,
+  },
+  startButton: {
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.spacing(2.25),
+    alignItems: 'center',
+  },
+  buttonDisabled: { opacity: 0.45 },
+  startText: {
+    color: '#000000',
+    fontSize: theme.font.h2,
+    fontFamily: theme.family.extraBold,
+  },
+  waitingPanel: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing(1.5),
+  },
+  waitingText: {
+    color: theme.colors.textDim,
+    fontSize: theme.font.body,
+    fontFamily: theme.family.regular,
+    textAlign: 'center',
   },
   leaveButton: {
     borderWidth: 1.5,
