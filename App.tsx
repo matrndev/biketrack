@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  useFonts,
+  RobotoCondensed_400Regular,
+  RobotoCondensed_500Medium,
+  RobotoCondensed_700Bold,
+  RobotoCondensed_800ExtraBold,
+} from '@expo-google-fonts/roboto-condensed';
 import { ensureSignedIn } from './src/auth';
 import { useStore } from './src/store';
 import Navigation from './src/navigation';
@@ -11,6 +18,13 @@ export default function App() {
   const hydrated = useStore((s) => s.hydrated);
   const setUid = useStore((s) => s.setUid);
   const [error, setError] = useState<string | null>(null);
+  // If a font fails to load we render anyway (system font fallback) rather than hang.
+  const [fontsLoaded, fontError] = useFonts({
+    RobotoCondensed_400Regular,
+    RobotoCondensed_500Medium,
+    RobotoCondensed_700Bold,
+    RobotoCondensed_800ExtraBold,
+  });
 
   useEffect(() => {
     hydrate();
@@ -25,7 +39,7 @@ export default function App() {
       });
   }, []);
 
-  if (!hydrated) {
+  if (!hydrated || (!fontsLoaded && !fontError)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={theme.colors.accent} />

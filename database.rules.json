@@ -1,0 +1,40 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "_debug": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "groups": {
+      "$groupId": {
+        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+        ".write": "auth != null && !newData.exists() && data.child('meta').child('leaderId').val() === auth.uid",
+
+        "meta": {
+          ".write": "auth != null && (!data.exists() || data.child('leaderId').val() === auth.uid)",
+          ".validate": "newData.hasChildren(['name', 'leaderId', 'createdAt', 'joinCode'])"
+        },
+
+        "members": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && (auth.uid === $uid || root.child('groups').child($groupId).child('meta').child('leaderId').val() === auth.uid)"
+          }
+        }
+      }
+    },
+
+    "joinCodes": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || !root.child('groups').child(data.val()).exists() || root.child('groups').child(data.val()).child('meta').child('leaderId').val() === auth.uid)",
+        ".validate": "$code.matches(/^[0-9]{6}$/) && newData.isString()"
+      }
+    }
+  }
+}

@@ -32,7 +32,13 @@
         }
       ],
       "@react-native-firebase/app",
-      "@react-native-firebase/auth"
+      "@react-native-firebase/auth",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BikeTrack uses the camera to scan a group's QR code."
+        }
+      ]
     ],
     "extra": {
       "eas": {

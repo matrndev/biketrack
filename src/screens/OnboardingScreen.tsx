@@ -58,12 +58,13 @@ const styles = StyleSheet.create({
   title: {
     color: theme.colors.text,
     fontSize: theme.font.h1,
-    fontWeight: '800',
+    fontFamily: theme.family.extraBold,
     marginBottom: theme.spacing(1),
   },
   subtitle: {
     color: theme.colors.textDim,
     fontSize: theme.font.body,
+    fontFamily: theme.family.regular,
     marginBottom: theme.spacing(3),
   },
   input: {
@@ -73,6 +74,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     color: theme.colors.text,
     fontSize: theme.font.h2,
+    fontFamily: theme.family.regular,
     paddingHorizontal: theme.spacing(2),
     paddingVertical: theme.spacing(2),
     marginBottom: theme.spacing(2),
@@ -87,6 +89,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#000000',
     fontSize: theme.font.h2,
-    fontWeight: '700',
+    fontFamily: theme.family.bold,
   },
 });
