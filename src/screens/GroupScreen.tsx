@@ -14,6 +14,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
 import { useGroup, leaveGroup, qrPayload, Member } from '../groups';
+import { useServerTimeOffset, agoLabel } from '../time';
+import { requestTrackingPermissions, startTracking } from '../location';
 import { theme } from '../theme';
 
 export default function GroupScreen() {
@@ -22,7 +24,10 @@ export default function GroupScreen() {
   const groupId = useStore((s) => s.groupId);
   const setGroupId = useStore((s) => s.setGroupId);
   const group = useGroup(groupId);
+  const offset = useServerTimeOffset();
   const [leaving, setLeaving] = useState(false);
+  const [trackErr, setTrackErr] = useState<string | null>(null);
+  const [, tick] = useState(0);
 
   // Group deleted / access lost → clear the stored id and fall back home.
   useEffect(() => {
@@ -31,6 +36,31 @@ export default function GroupScreen() {
       navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
     }
   }, [group, leaving]);
+
+  // The interactive permission ask lives here (useRideLifecycle only
+  // auto-starts once permissions exist). Idempotent, so re-mounts are fine.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await requestTrackingPermissions();
+      if (cancelled) return;
+      if (res.granted) {
+        setTrackErr(null);
+        await startTracking();
+      } else {
+        setTrackErr(res.reason ?? 'Location permission missing.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Re-render each second so "updated Ns ago" labels stay live.
+  useEffect(() => {
+    const iv = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
 
   if (!group) {
     return (
@@ -96,21 +126,38 @@ export default function GroupScreen() {
           <Text style={styles.cardLabel}>
             Riders ({roster.length})
           </Text>
-          {roster.map(([memberId, member]: [string, Member]) => (
-            <View key={memberId} style={styles.memberRow}>
-              <Text style={styles.memberName}>
-                {member.name}
-                {memberId === uid ? ' (you)' : ''}
-              </Text>
-              {member.role === 'leader' && (
-                <Text style={styles.leaderBadge}>LEADER</Text>
-              )}
-            </View>
-          ))}
+          {roster.map(([memberId, member]: [string, Member]) => {
+            const pres = group.presence[memberId];
+            return (
+              <View key={memberId} style={styles.memberRow}>
+                <View
+                  style={[
+                    styles.presenceDot,
+                    { backgroundColor: pres?.online ? theme.colors.success : theme.colors.border },
+                  ]}
+                />
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>
+                    {member.name}
+                    {memberId === uid ? ' (you)' : ''}
+                  </Text>
+                  <Text style={styles.memberStatus}>
+                    {pres?.updatedAt
+                      ? `updated ${agoLabel(pres.updatedAt, offset)}`
+                      : 'no signal yet'}
+                  </Text>
+                </View>
+                {member.role === 'leader' && (
+                  <Text style={styles.leaderBadge}>LEADER</Text>
+                )}
+              </View>
+            );
+          })}
         </View>
       </ScrollView>
 
       <View style={styles.footer}>
+        {trackErr && <Text style={styles.trackErr}>⚠ {trackErr}</Text>}
         <Pressable style={styles.leaveButton} onPress={confirmLeave}>
           <Text style={styles.leaveText}>Leave group</Text>
         </Pressable>
@@ -175,15 +222,33 @@ const styles = StyleSheet.create({
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: theme.spacing(1.5),
     paddingVertical: theme.spacing(1),
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
+  presenceDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  memberInfo: { flex: 1 },
   memberName: {
     color: theme.colors.text,
     fontSize: theme.font.body,
     fontFamily: theme.family.medium,
+  },
+  memberStatus: {
+    color: theme.colors.textDim,
+    fontSize: theme.font.small,
+    fontFamily: theme.family.regular,
+  },
+  trackErr: {
+    color: theme.colors.warning,
+    fontSize: theme.font.small,
+    fontFamily: theme.family.regular,
+    textAlign: 'center',
+    marginBottom: theme.spacing(1),
   },
   leaderBadge: {
     color: theme.colors.accent,

@@ -9,6 +9,7 @@ import {
   RobotoCondensed_800ExtraBold,
 } from '@expo-google-fonts/roboto-condensed';
 import { ensureSignedIn } from './src/auth';
+import { syncTrackingState } from './src/location';
 import { useStore } from './src/store';
 import Navigation from './src/navigation';
 import { theme } from './src/theme';
@@ -28,6 +29,7 @@ export default function App() {
 
   useEffect(() => {
     hydrate();
+    syncTrackingState(); // the FGS can outlive a JS reload — reflect reality
     ensureSignedIn()
       .then((uid) => {
         setUid(uid);

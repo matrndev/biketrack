@@ -25,6 +25,12 @@
             ".read": "auth != null && auth.uid === $uid",
             ".write": "auth != null && (auth.uid === $uid || root.child('groups').child($groupId).child('meta').child('leaderId').val() === auth.uid)"
           }
+        },
+
+        "presence": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
         }
       }
     },

@@ -7,6 +7,13 @@ import type { RootStackParamList } from '../navigation';
 import { db } from '../firebase';
 import { useStore } from '../store';
 import { useServerTimeOffset, agoLabel } from '../time';
+import {
+  requestTrackingPermissions,
+  startTracking,
+  stopTracking,
+  isBatteryOptimized,
+  openBatteryOptimizationSettings,
+} from '../location';
 import { theme } from '../theme';
 
 export default function HomeScreen() {
@@ -14,9 +21,40 @@ export default function HomeScreen() {
   const uid = useStore((s) => s.uid);
   const displayName = useStore((s) => s.displayName);
   const groupId = useStore((s) => s.groupId);
+  const tracking = useStore((s) => s.tracking);
+  const lastFix = useStore((s) => s.lastFix);
   const offset = useServerTimeOffset();
   const [lastBeat, setLastBeat] = useState<number | null>(null);
+  const [batteryOpt, setBatteryOpt] = useState<boolean | null>(null);
+  const [locErr, setLocErr] = useState<string | null>(null);
   const [, tick] = useState(0);
+
+  // Battery-optimization status: poll every few seconds so it refreshes after
+  // the user flips the exemption in system settings and comes back.
+  useEffect(() => {
+    const check = () => isBatteryOptimized().then(setBatteryOpt);
+    check();
+    const iv = setInterval(check, 5000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const toggleTracking = async () => {
+    setLocErr(null);
+    try {
+      if (tracking) {
+        await stopTracking();
+      } else {
+        const res = await requestTrackingPermissions();
+        if (!res.granted) {
+          setLocErr(res.reason ?? 'Permission missing.');
+          return;
+        }
+        await startTracking();
+      }
+    } catch (e: any) {
+      setLocErr(String(e?.message ?? e));
+    }
+  };
 
   // RTDB smoke test: write a heartbeat every 5s and read it back. Proves the
   // round-trip and that server timestamps land. Removed once real presence lands.
@@ -54,6 +92,63 @@ export default function HomeScreen() {
           <Text style={styles.value}>
             last heartbeat: {lastBeat ? agoLabel(lastBeat, offset) : '—'}
           </Text>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardLabel}>Location</Text>
+            <Pressable style={styles.chip} onPress={toggleTracking}>
+              <Text style={styles.chipText}>{tracking ? 'Stop' : 'Start'}</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.value}>
+            tracking:{' '}
+            <Text style={{ color: tracking ? theme.colors.success : theme.colors.textDim }}>
+              {tracking ? 'on (foreground service)' : 'off'}
+            </Text>
+          </Text>
+          {lastFix ? (
+            <>
+              <Text style={styles.mono}>
+                {lastFix.lat.toFixed(5)}, {lastFix.lng.toFixed(5)}
+                {lastFix.accuracy != null ? `  ±${Math.round(lastFix.accuracy)} m` : ''}
+              </Text>
+              <Text style={styles.value}>
+                speed:{' '}
+                {lastFix.speed != null ? `${(lastFix.speed * 3.6).toFixed(1)} km/h` : '—'}
+                {'    heading: '}
+                {lastFix.heading != null && lastFix.heading >= 0
+                  ? `${Math.round(lastFix.heading)}°`
+                  : '?'}
+              </Text>
+              <Text style={styles.value}>
+                battery:{' '}
+                {lastFix.battery != null ? `${Math.round(lastFix.battery * 100)}%` : '—'}
+                {'    fix age: '}
+                {Math.max(0, Math.round((Date.now() - lastFix.timestamp) / 1000))}s
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.value}>no fix yet</Text>
+          )}
+          {batteryOpt !== null && (
+            <View style={styles.cardHeader}>
+              <Text
+                style={[
+                  styles.value,
+                  { color: batteryOpt ? theme.colors.warning : theme.colors.success },
+                ]}
+              >
+                battery optimization: {batteryOpt ? 'ON!' : 'off'}
+              </Text>
+              {batteryOpt && (
+                <Pressable style={styles.chip} onPress={openBatteryOptimizationSettings}>
+                  <Text style={styles.chipText}>Fix</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+          {locErr && <Text style={styles.locErr}>{locErr}</Text>}
         </View>
       </ScrollView>
 
@@ -130,6 +225,32 @@ const styles = StyleSheet.create({
   value: {
     color: theme.colors.text,
     fontSize: theme.font.body,
+    fontFamily: theme.family.regular,
+  },
+  mono: {
+    color: theme.colors.text,
+    fontSize: theme.font.mono,
+    fontFamily: 'monospace',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  chip: {
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: theme.radius.sm,
+    paddingVertical: theme.spacing(0.5),
+    paddingHorizontal: theme.spacing(1.5),
+  },
+  chipText: {
+    color: theme.colors.accent,
+    fontSize: theme.font.small,
+    fontFamily: theme.family.bold,
+  },
+  locErr: {
+    color: theme.colors.warning,
+    fontSize: theme.font.small,
     fontFamily: theme.family.regular,
   },
   bigButton: {
