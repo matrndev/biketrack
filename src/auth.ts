@@ -1,6 +1,11 @@
 // Anonymous auth: no login UX, but every device gets a stable Firebase UID that
 // persists across relaunches (react-native-firebase caches the session).
-import { signInAnonymously, onAuthStateChanged, signOut } from '@react-native-firebase/auth';
+import {
+  signInAnonymously,
+  onAuthStateChanged,
+  signOut,
+  deleteUser,
+} from '@react-native-firebase/auth';
 import { auth } from './firebase';
 
 /** Signs in anonymously if needed and resolves with the stable device UID. */
@@ -17,7 +22,7 @@ export async function ensureSignedIn(): Promise<string> {
  */
 export async function resetIdentity(): Promise<string> {
   try {
-    await auth.currentUser?.delete();
+    if (auth.currentUser) await deleteUser(auth.currentUser);
   } catch {
     await signOut(auth);
   }

@@ -1,14 +1,8 @@
 import React, { useState } from 'react';
-import {
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { useStore } from '../store';
 import { theme } from '../theme';
+import KeyboardAwareScreen from '../KeyboardAwareScreen';
 
 export default function OnboardingScreen() {
   const setDisplayName = useStore((s) => s.setDisplayName);
@@ -20,10 +14,7 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAwareScreen centered contentStyle={styles.container}>
       <Text style={styles.title}>BikeTrack</Text>
       <Text style={styles.subtitle}>What should the group call you?</Text>
       <TextInput
@@ -44,15 +35,12 @@ export default function OnboardingScreen() {
       >
         <Text style={styles.buttonText}>Continue</Text>
       </Pressable>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-    justifyContent: 'center',
     paddingHorizontal: theme.spacing(3),
   },
   title: {

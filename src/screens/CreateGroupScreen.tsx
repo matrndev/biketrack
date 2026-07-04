@@ -1,17 +1,11 @@
 import React, { useState } from 'react';
-import {
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
 import { createGroup } from '../groups';
+import KeyboardAwareScreen from '../KeyboardAwareScreen';
 import { theme } from '../theme';
 
 export default function CreateGroupScreen() {
@@ -20,7 +14,12 @@ export default function CreateGroupScreen() {
   const displayName = useStore((s) => s.displayName);
   const setGroupId = useStore((s) => s.setGroupId);
 
-  const [name, setName] = useState(displayName ? `${displayName}'s ride` : 'Group ride');
+  const getDayOfWeek = () => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[new Date().getDay()];
+  };
+  
+  const [name, setName] = useState(displayName ? `${displayName}'s ${getDayOfWeek()} ride` : 'Group ride');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const trimmed = name.trim();
@@ -41,17 +40,12 @@ export default function CreateGroupScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAwareScreen contentStyle={styles.container}>
       <Text style={styles.label}>Group name</Text>
       <TextInput
         style={styles.input}
         value={name}
         onChangeText={setName}
-        placeholder="Saturday ride"
-        placeholderTextColor={theme.colors.textDim}
         autoFocus
         maxLength={40}
         returnKeyType="done"
@@ -65,17 +59,12 @@ export default function CreateGroupScreen() {
       >
         <Text style={styles.buttonText}>{busy ? 'Creating…' : 'Create group'}</Text>
       </Pressable>
-      <Text style={styles.hint}>
-        You'll get a 6-digit code and a QR the others can scan.
-      </Text>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
     padding: theme.spacing(2),
     paddingTop: theme.spacing(3),
   },

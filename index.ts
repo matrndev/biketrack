@@ -1,5 +1,9 @@
 import { registerRootComponent } from 'expo';
 
+// Defines the background location task — must happen at startup, before
+// Android delivers queued fixes to it (see src/location.ts).
+import './src/location';
+
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

@@ -1,13 +1,5 @@
 import React, { useRef, useState } from 'react';
-import {
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  View,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { Text, TextInput, Pressable, StyleSheet, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -15,6 +7,7 @@ import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
 import { joinGroup, parseJoinCode } from '../groups';
 import { theme } from '../theme';
+import KeyboardAwareScreen from '../KeyboardAwareScreen';
 
 export default function JoinScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -63,10 +56,7 @@ export default function JoinScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAwareScreen contentStyle={styles.container}>
       <View style={styles.scannerBox}>
         {permission?.granted ? (
           <CameraView
@@ -87,7 +77,7 @@ export default function JoinScreen() {
         )}
       </View>
 
-      <Text style={styles.divider}>or type the code</Text>
+      
 
       <TextInput
         style={styles.codeInput}
@@ -108,14 +98,12 @@ export default function JoinScreen() {
       >
         <Text style={styles.buttonText}>{busy ? 'Joining…' : 'Join'}</Text>
       </Pressable>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
     padding: theme.spacing(2),
   },
   scannerBox: {
@@ -171,7 +159,7 @@ const styles = StyleSheet.create({
     letterSpacing: 12,
     textAlign: 'center',
     paddingVertical: theme.spacing(2),
-    marginBottom: theme.spacing(2),
+    marginVertical: theme.spacing(2),
   },
   button: {
     backgroundColor: theme.colors.accent,

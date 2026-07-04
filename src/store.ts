@@ -7,12 +7,28 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const NAME_KEY = 'biketrack.displayName';
 const GROUP_KEY = 'biketrack.groupId';
 
+/** Latest GPS fix as captured by the background location task. */
+export type Fix = {
+  lat: number;
+  lng: number;
+  heading: number | null;
+  speed: number | null;
+  accuracy: number | null;
+  battery: number | null;
+  /** Device timestamp of the fix (ms). */
+  timestamp: number;
+};
+
 type State = {
   uid: string | null;
   displayName: string | null;
   groupId: string | null;
   hydrated: boolean;
+  tracking: boolean;
+  lastFix: Fix | null;
   setUid: (uid: string | null) => void;
+  setTracking: (tracking: boolean) => void;
+  setLastFix: (fix: Fix) => void;
   setDisplayName: (name: string) => Promise<void>;
   setGroupId: (groupId: string | null) => Promise<void>;
   /** Wipe persisted identity state (name + group) — used on log out. */
@@ -25,7 +41,11 @@ export const useStore = create<State>((set) => ({
   displayName: null,
   groupId: null,
   hydrated: false,
+  tracking: false,
+  lastFix: null,
   setUid: (uid) => set({ uid }),
+  setTracking: (tracking) => set({ tracking }),
+  setLastFix: (lastFix) => set({ lastFix }),
   setDisplayName: async (name) => {
     await AsyncStorage.setItem(NAME_KEY, name);
     set({ displayName: name });

@@ -13,6 +13,7 @@ import {
   runTransaction,
 } from '@react-native-firebase/database';
 import { db } from './firebase';
+import type { Presence } from './presence';
 
 export type Role = 'leader' | 'member';
 
@@ -33,6 +34,7 @@ export type Group = {
   id: string;
   meta: GroupMeta;
   members: Record<string, Member>;
+  presence: Record<string, Presence>;
 };
 
 const QR_PREFIX = 'biketrack://join/';
@@ -146,6 +148,7 @@ export async function leaveGroup(groupId: string, uid: string): Promise<void> {
 
   const updates: Record<string, unknown> = {
     [`groups/${groupId}/members/${uid}`]: null,
+    [`groups/${groupId}/presence/${uid}`]: null,
   };
   if (group.meta.leaderId === uid) {
     const next = others.sort(
@@ -181,7 +184,12 @@ export function useGroup(groupId: string | null): Group | null | undefined {
           setGroup(null);
           return;
         }
-        setGroup({ id: groupId, meta: v.meta, members: v.members ?? {} });
+        setGroup({
+          id: groupId,
+          meta: v.meta,
+          members: v.members ?? {},
+          presence: v.presence ?? {},
+        });
       },
       () => setGroup(null) // permission denied → treat as gone
     );

@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useStore } from './store';
 import { resetIdentity } from './auth';
 import { leaveGroup } from './groups';
+import { useRideLifecycle } from './ride';
 import OnboardingScreen from './screens/OnboardingScreen';
 import HomeScreen from './screens/HomeScreen';
 import CreateGroupScreen from './screens/CreateGroupScreen';
@@ -41,7 +42,7 @@ function LogoutButton() {
   const confirm = () => {
     Alert.alert(
       'Log out?',
-      'This device gets a brand-new identity. You will leave your group, and the old identity cannot be recovered.',
+      'This removes your user account from this device. You will need to log back in with a new identity to use the app.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -90,6 +91,8 @@ export default function Navigation() {
   // Hydrated before Navigation mounts (App gates on it), so this is stable at
   // first render: relaunching while in a group goes straight to the Group screen.
   const groupId = useStore((s) => s.groupId);
+  // Presence + GPS tracking follow group membership, whatever screen is shown.
+  useRideLifecycle();
 
   return (
     <NavigationContainer theme={navTheme}>

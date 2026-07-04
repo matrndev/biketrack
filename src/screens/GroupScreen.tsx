@@ -50,10 +50,10 @@ export default function GroupScreen() {
     Alert.alert(
       'Leave group?',
       lastOne
-        ? 'You are the last rider — the group will be deleted.'
+        ? 'You are the last user, the group will be deleted.'
         : isLeader
           ? 'Leadership passes to the next rider.'
-          : undefined,
+          : 'You can join the group again later.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -80,7 +80,7 @@ export default function GroupScreen() {
         <Text style={styles.groupName}>{group.meta.name}</Text>
 
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>Invite riders</Text>
+          <Text style={styles.cardLabel}>Invite code</Text>
           <View style={styles.qrWrap}>
             <QRCode
               value={qrPayload(group.meta.joinCode)}
@@ -90,7 +90,6 @@ export default function GroupScreen() {
             />
           </View>
           <Text style={styles.joinCode}>{group.meta.joinCode}</Text>
-          <Text style={styles.hint}>Scan the QR or type the code on the join screen.</Text>
         </View>
 
         <View style={styles.card}>
