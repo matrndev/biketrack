@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
-import { useGroup, leaveGroup, qrPayload, Member } from '../groups';
+import { useGroup, leaveGroup, startRide, qrPayload, Member } from '../groups';
 import { useServerTimeOffset, agoLabel } from '../time';
 import { requestTrackingPermissions, startTracking } from '../location';
 import { theme } from '../theme';
@@ -26,6 +26,7 @@ export default function GroupScreen() {
   const group = useGroup(groupId);
   const offset = useServerTimeOffset();
   const [leaving, setLeaving] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [trackErr, setTrackErr] = useState<string | null>(null);
   const [, tick] = useState(0);
 
@@ -36,6 +37,15 @@ export default function GroupScreen() {
       navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
     }
   }, [group, leaving]);
+
+  // Ride started (by the leader, on any device) → everyone moves to the Ride
+  // screen. Fires on mount too, so relaunching mid-ride lands there as well.
+  // Deliberately keyed on the boolean: backing out of Ride mid-ride is allowed
+  // (to check the roster / QR) and must not bounce straight back.
+  const rideActive = !!group?.meta.rideStartedAt;
+  useEffect(() => {
+    if (rideActive) navigation.navigate('Ride');
+  }, [rideActive]);
 
   // The interactive permission ask lives here (useRideLifecycle only
   // auto-starts once permissions exist). Idempotent, so re-mounts are fine.
@@ -158,6 +168,38 @@ export default function GroupScreen() {
 
       <View style={styles.footer}>
         {trackErr && <Text style={styles.trackErr}>⚠ {trackErr}</Text>}
+        {isLeader ? (
+          <Pressable
+            style={[styles.startButton, starting && styles.startButtonBusy]}
+            disabled={starting}
+            onPress={async () => {
+              if (!groupId) return;
+              if (rideActive) {
+                navigation.navigate('Ride');
+                return;
+              }
+              setStarting(true);
+              try {
+                await startRide(groupId);
+                // Navigation happens via the rideActive effect above.
+              } catch (e: any) {
+                Alert.alert('Could not start the ride', String(e?.message ?? e));
+              } finally {
+                setStarting(false);
+              }
+            }}
+          >
+            <Text style={styles.startText}>
+              {rideActive ? 'Back to ride' : 'Start ride'}
+            </Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.waitingHint}>
+            {rideActive
+              ? 'Ride in progress'
+              : 'Waiting for the leader to start the ride…'}
+          </Text>
+        )}
         <Pressable style={styles.leaveButton} onPress={confirmLeave}>
           <Text style={styles.leaveText}>Leave group</Text>
         </Pressable>
@@ -258,9 +300,28 @@ const styles = StyleSheet.create({
   },
   footer: {
     padding: theme.spacing(2),
+    gap: theme.spacing(1.5),
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.bg,
+  },
+  startButton: {
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.spacing(2),
+    alignItems: 'center',
+  },
+  startButtonBusy: { opacity: 0.6 },
+  startText: {
+    color: '#000000',
+    fontSize: theme.font.h2,
+    fontFamily: theme.family.extraBold,
+  },
+  waitingHint: {
+    color: theme.colors.textDim,
+    fontSize: theme.font.small,
+    fontFamily: theme.family.regular,
+    textAlign: 'center',
   },
   leaveButton: {
     borderWidth: 1.5,

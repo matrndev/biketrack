@@ -28,6 +28,8 @@ export type GroupMeta = {
   leaderId: string;
   createdAt: number;
   joinCode: string;
+  /** Server ts while a ride is running; absent/null otherwise. */
+  rideStartedAt?: number | null;
 };
 
 export type Group = {
@@ -123,6 +125,19 @@ export async function joinGroup(
     joinedAt: existing?.joinedAt ?? serverTimestamp(),
   });
   return groupId;
+}
+
+/**
+ * Start the ride (leader only by convention; rules enforce membership). Every
+ * client watches `meta/rideStartedAt` via useGroup and moves to the Ride screen.
+ */
+export async function startRide(groupId: string): Promise<void> {
+  await set(ref(db, `groups/${groupId}/meta/rideStartedAt`), serverTimestamp());
+}
+
+/** End the ride — clears the flag, everyone falls back to the Group screen. */
+export async function endRide(groupId: string): Promise<void> {
+  await set(ref(db, `groups/${groupId}/meta/rideStartedAt`), null);
 }
 
 /**
