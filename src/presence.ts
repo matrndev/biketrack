@@ -2,6 +2,10 @@
 // true and arm an RTDB onDisconnect so the *server* flips it to false when the
 // socket dies — that's what powers "connection dropped" alerts. Location data
 // on the same node is written by the background task in location.ts.
+//
+// updatedAt doubles as the heartbeat: the location task bumps it on every fix,
+// but fixes stop when stationary (distanceInterval), so we also bump it on a
+// timer — otherwise a rider stopped at a café looks dropped (alerts.ts STALE_MS).
 import {
   ref,
   onValue,
@@ -10,6 +14,9 @@ import {
   serverTimestamp,
 } from '@react-native-firebase/database';
 import { db } from './firebase';
+
+/** Well under alerts.ts STALE_MS, so a live-but-stationary rider never looks dropped. */
+const HEARTBEAT_MS = 15_000;
 
 export type Presence = {
   lat?: number;
@@ -40,8 +47,13 @@ export function setupPresence(groupId: string, uid: string): () => void {
       .catch(() => {});
   });
 
+  const heartbeat = setInterval(() => {
+    update(presRef, { updatedAt: serverTimestamp() }).catch(() => {});
+  }, HEARTBEAT_MS);
+
   return () => {
     unsub();
+    clearInterval(heartbeat);
     onDisconnect(presRef).cancel().catch(() => {});
     update(presRef, { online: false }).catch(() => {});
   };

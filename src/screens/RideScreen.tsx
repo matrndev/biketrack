@@ -1,12 +1,13 @@
-// Ride screen (M3+M4): the train view plus the comms dock. One continuous
+// Ride screen (M3+M4+M5): the train view plus the comms dock. One continuous
 // vertical line top → bottom, a circle per rider ordered front → back along
 // the direction of travel, with the space between circles proportional to the
-// real gap in meters. Each rider shows a live speed readout. Over-threshold
-// gaps turn the segment yellow and raise a non-distractive bottom banner +
-// vibration (PLAN §5.5). Comms: floating chat button bottom-center → big-button
-// menu; active pins show as a strip under the header and are spoken via the
-// announcer hook. Always pushed on top of the Group screen, which keeps
-// handling group-gone cleanup beneath.
+// real gap in meters. Each rider shows a live speed readout and battery %.
+// Over-threshold gaps turn the segment yellow; ride alerts (dropped
+// connections, someone too far — PLAN §5.5) are spoken and surface as a top
+// banner that auto-dismisses, so they never cover the comms dock. Comms:
+// floating chat button bottom-center → big-button menu; active pins show as a
+// strip under the header and are spoken via the announcer hook. Always pushed
+// on top of the Group screen, which keeps handling group-gone cleanup beneath.
 import React, { useEffect, useState } from 'react';
 import {
   Text,
@@ -35,6 +36,7 @@ import {
   useCommsAnnouncer,
 } from '../comms';
 import CommsDock, { severityColor } from '../CommsDock';
+import { useRideAlerts, Straggler } from '../alerts';
 import { useServerTimeOffset, serverNow, agoLabel } from '../time';
 import { theme } from '../theme';
 
@@ -109,13 +111,19 @@ export default function RideScreen() {
     }
   }
   const train = buildTrain(located, group?.meta.leaderId ?? '');
-  const widestGap = train.gaps.length > 0 ? Math.max(...train.gaps) : 0;
-  const gapAlert = widestGap > GAP_ALERT_METERS;
 
-  // Buzz once when the group first splits past the threshold, not every render.
-  useEffect(() => {
-    if (gapAlert) Vibration.vibrate([0, 300, 150, 300]);
-  }, [gapAlert]);
+  // The rider behind the widest gap — the alerts hook decides if it's "too far".
+  let straggler: Straggler | null = null;
+  if (train.gaps.length > 0) {
+    const widest = train.gaps.indexOf(Math.max(...train.gaps));
+    const behind = train.order[widest + 1];
+    straggler = {
+      name: group?.members[behind.id]?.name ?? 'A rider',
+      meters: train.gaps[widest],
+      isYou: behind.id === uid,
+    };
+  }
+  const rideAlert = useRideAlerts(group, uid, offset, straggler, GAP_ALERT_METERS);
 
   if (!group) {
     // Group gone — GroupScreen (still mounted beneath) resets the stack home.
@@ -171,6 +179,11 @@ export default function RideScreen() {
       !noSignal && pres?.speed != null && pres.speed >= 0
         ? Math.round(pres.speed * 3.6)
         : null;
+    // expo-battery reports 0..1 (negative when unavailable).
+    const batteryPct =
+      pres?.battery != null && pres.battery >= 0
+        ? Math.round(pres.battery * 100)
+        : null;
     return (
       <View key={memberId} style={[styles.riderRow, noSignal && styles.riderRowDim]}>
         <View
@@ -192,7 +205,7 @@ export default function RideScreen() {
               {member?.name ?? 'Unknown'}
               {memberId === uid ? ' (you)' : ''}
             </Text>
-            {leader && <Text style={styles.leaderBadge}>LEADER</Text>}
+            
           </View>
           <Text style={[styles.riderStatus, pres?.online === false && styles.riderStatusOffline]}>
             {pres?.online === false
@@ -201,6 +214,18 @@ export default function RideScreen() {
                 ? `updated ${agoLabel(pres.updatedAt, offset)}`
                 : 'no signal yet'}
           </Text>
+        </View>
+        <View style={styles.battBlock}>
+          <Text
+            style={[
+              styles.battValue,
+              batteryPct != null && batteryPct <= 30 && styles.battWarn,
+              batteryPct != null && batteryPct <= 15 && styles.battLow,
+            ]}
+          >
+            {batteryPct != null ? `${batteryPct}%` : '–'}
+          </Text>
+          <Text style={styles.speedUnit}>batt</Text>
         </View>
         <View style={styles.speedBlock}>
           <Text style={styles.speedValue}>{kmh ?? '–'}</Text>
@@ -213,11 +238,11 @@ export default function RideScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.groupName}>{group.meta.name}</Text>
+        {/*<Text style={styles.groupName}>{group.meta.name}</Text>*/}
         <View style={styles.headerRight}>
-          {rideStartedAt != null && (
+          {/* {rideStartedAt != null && (
             <Text style={styles.elapsed}>{elapsedLabel(rideStartedAt, offset)}</Text>
-          )}
+          )} */}
           <View style={styles.awakeToggle}>
             <Text style={styles.awakeLabel}>SCREEN{'\n'}ON</Text>
             <Switch
@@ -297,10 +322,20 @@ export default function RideScreen() {
         <CommsDock onSend={sendAlert} />
       </View>
 
-      {gapAlert && (
-        <View style={styles.alertBanner}>
-          <Text style={styles.alertText}>
-            Group splitting — {Math.round(widestGap)} m gap
+      {/* Auto-dismissing alert banner (dropped connection / too far) — top
+          only, so it never covers the comms dock or the gap labels in focus. */}
+      {rideAlert && (
+        <View
+          style={[
+            styles.alertBanner,
+            rideAlert.tone === 'danger' && styles.alertBannerDanger,
+          ]}
+          pointerEvents="none"
+        >
+          <Text
+            style={[styles.alertText, rideAlert.tone === 'danger' && styles.alertTextDanger]}
+          >
+            {rideAlert.message}
           </Text>
         </View>
       )}
@@ -445,7 +480,15 @@ const styles = StyleSheet.create({
     fontFamily: theme.family.bold,
     letterSpacing: 1,
   },
-  speedBlock: { alignItems: 'flex-end' },
+  battBlock: { alignItems: 'flex-end', minWidth: 44 },
+  battValue: {
+    color: theme.colors.textDim,
+    fontSize: theme.font.body,
+    fontFamily: theme.family.bold,
+  },
+  battWarn: { color: theme.colors.warning },
+  battLow: { color: theme.colors.danger },
+  speedBlock: { alignItems: 'flex-end', minWidth: 48 },
   speedValue: {
     color: theme.colors.text,
     fontSize: theme.font.h2,
@@ -472,11 +515,11 @@ const styles = StyleSheet.create({
     marginLeft: DOT + theme.spacing(1.5),
     color: theme.colors.text,
     fontSize: theme.font.body,
-    fontFamily: 'monospace',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.surfaceAlt,
     paddingHorizontal: theme.spacing(1),
     paddingVertical: 2,
     borderRadius: theme.radius.sm,
+    fontWeight: "bold"
   },
   gapLabelWide: {
     color: theme.colors.warning,
@@ -518,15 +561,23 @@ const styles = StyleSheet.create({
     fontFamily: theme.family.extraBold,
   },
   alertBanner: {
+    position: 'absolute',
+    top: theme.spacing(1),
+    left: theme.spacing(2),
+    right: theme.spacing(2),
     backgroundColor: theme.colors.warning,
+    borderRadius: theme.radius.md,
     paddingVertical: theme.spacing(1.5),
     paddingHorizontal: theme.spacing(2),
     alignItems: 'center',
+    elevation: 8,
   },
+  alertBannerDanger: { backgroundColor: theme.colors.danger },
   alertText: {
     color: '#000000',
     fontSize: theme.font.body,
     fontFamily: theme.family.extraBold,
     letterSpacing: 0.5,
   },
+  alertTextDanger: { color: theme.colors.text },
 });
