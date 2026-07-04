@@ -3,7 +3,7 @@
 // the direction of travel, with the space between circles proportional to the
 // real gap in meters. Each rider shows a live speed readout. Over-threshold
 // gaps turn the segment yellow and raise a non-distractive bottom banner +
-// vibration (PLAN §5.5). Comms: floating chat button bottom-right → big-button
+// vibration (PLAN §5.5). Comms: floating chat button bottom-center → big-button
 // menu; active pins show as a strip under the header and are spoken via the
 // announcer hook. Always pushed on top of the Group screen, which keeps
 // handling group-gone cleanup beneath.
@@ -13,11 +13,13 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
+  Switch,
   View,
   Alert,
   ActivityIndicator,
   Vibration,
 } from 'react-native';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
@@ -64,6 +66,17 @@ export default function RideScreen() {
   const comms = useComms(groupId, offset);
   useCommsAnnouncer(comms, uid, offset);
   const [, tick] = useState(0);
+  const [keepAwake, setKeepAwake] = useState(false);
+
+  // Keep the display on while the toggle is on; released on toggle-off and on
+  // unmount so leaving the ride never leaves the screen pinned awake.
+  useEffect(() => {
+    if (!keepAwake) return;
+    activateKeepAwakeAsync('ride');
+    return () => {
+      deactivateKeepAwake('ride');
+    };
+  }, [keepAwake]);
 
   const rideStartedAt = group?.meta.rideStartedAt ?? null;
 
@@ -201,9 +214,21 @@ export default function RideScreen() {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.groupName}>{group.meta.name}</Text>
-        {rideStartedAt != null && (
-          <Text style={styles.elapsed}>{elapsedLabel(rideStartedAt, offset)}</Text>
-        )}
+        <View style={styles.headerRight}>
+          {rideStartedAt != null && (
+            <Text style={styles.elapsed}>{elapsedLabel(rideStartedAt, offset)}</Text>
+          )}
+          <View style={styles.awakeToggle}>
+            <Text style={styles.awakeLabel}>SCREEN{'\n'}ON</Text>
+            <Switch
+              accessibilityLabel="Keep screen on"
+              value={keepAwake}
+              onValueChange={setKeepAwake}
+              trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+              thumbColor={theme.colors.text}
+            />
+          </View>
+        </View>
       </View>
 
       {pins.length > 0 && (
@@ -304,10 +329,28 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing(2),
     paddingTop: theme.spacing(1),
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+  },
+  awakeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+  },
+  awakeLabel: {
+    color: theme.colors.textDim,
+    fontSize: 10,
+    fontFamily: theme.family.medium,
+    letterSpacing: 1,
+    textAlign: 'right',
+    lineHeight: 12,
   },
   groupName: {
     color: theme.colors.text,

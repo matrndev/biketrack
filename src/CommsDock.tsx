@@ -1,4 +1,4 @@
-// The comms dock (PLAN §5.4): a big circular chat button pinned bottom-right
+// The comms dock (PLAN §5.4): a big circular chat button floating bottom-center
 // that opens a full-screen menu of thumb-sized one-tap alert buttons. Meant to
 // be used at speed with one glove: huge targets, high contrast, menu anchored
 // to the bottom with the most safety-critical buttons closest to the thumb.
@@ -105,8 +105,8 @@ export default function CommsDock({ onSend }: Props) {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    right: theme.spacing(2),
-    bottom: theme.spacing(2),
+    alignSelf: 'center',
+    bottom: theme.spacing(5),
     width: FAB,
     height: FAB,
     borderRadius: FAB / 2,
