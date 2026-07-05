@@ -14,7 +14,6 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Switch,
   View,
   Alert,
   ActivityIndicator,
@@ -68,7 +67,8 @@ export default function RideScreen() {
   const comms = useComms(groupId, offset);
   useCommsAnnouncer(comms, uid, offset);
   const [, tick] = useState(0);
-  const [keepAwake, setKeepAwake] = useState(false);
+  // Driven by the switch on the Settings screen (shared via the store).
+  const keepAwake = useStore((s) => s.keepAwake);
 
   // Keep the display on while the toggle is on; released on toggle-off and on
   // unmount so leaving the ride never leaves the screen pinned awake.
@@ -237,25 +237,6 @@ export default function RideScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        {/*<Text style={styles.groupName}>{group.meta.name}</Text>*/}
-        <View style={styles.headerRight}>
-          {/* {rideStartedAt != null && (
-            <Text style={styles.elapsed}>{elapsedLabel(rideStartedAt, offset)}</Text>
-          )} */}
-          <View style={styles.awakeToggle}>
-            <Text style={styles.awakeLabel}>SCREEN{'\n'}ON</Text>
-            <Switch
-              accessibilityLabel="Keep screen on"
-              value={keepAwake}
-              onValueChange={setKeepAwake}
-              trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
-              thumbColor={theme.colors.text}
-            />
-          </View>
-        </View>
-      </View>
-
       {pins.length > 0 && (
         <ScrollView
           horizontal
@@ -361,42 +342,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing(2),
-    paddingTop: theme.spacing(1),
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing(1.5),
-  },
-  awakeToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-  },
-  awakeLabel: {
-    color: theme.colors.textDim,
-    fontSize: 10,
-    fontFamily: theme.family.medium,
-    letterSpacing: 1,
-    textAlign: 'right',
-    lineHeight: 12,
-  },
-  groupName: {
-    color: theme.colors.text,
-    fontSize: theme.font.h2,
-    fontFamily: theme.family.bold,
-    flexShrink: 1,
-  },
-  elapsed: {
-    color: theme.colors.accent,
-    fontSize: theme.font.h2,
-    fontFamily: 'monospace',
   },
   container: {
     padding: theme.spacing(2),

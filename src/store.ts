@@ -26,7 +26,10 @@ type State = {
   hydrated: boolean;
   tracking: boolean;
   lastFix: Fix | null;
+  /** Ride setting: keep the display awake. Session-only, not persisted. */
+  keepAwake: boolean;
   setUid: (uid: string | null) => void;
+  setKeepAwake: (keepAwake: boolean) => void;
   setTracking: (tracking: boolean) => void;
   setLastFix: (fix: Fix) => void;
   setDisplayName: (name: string) => Promise<void>;
@@ -43,7 +46,9 @@ export const useStore = create<State>((set) => ({
   hydrated: false,
   tracking: false,
   lastFix: null,
+  keepAwake: false,
   setUid: (uid) => set({ uid }),
+  setKeepAwake: (keepAwake) => set({ keepAwake }),
   setTracking: (tracking) => set({ tracking }),
   setLastFix: (lastFix) => set({ lastFix }),
   setDisplayName: async (name) => {

@@ -12,6 +12,7 @@ import CreateGroupScreen from './screens/CreateGroupScreen';
 import JoinScreen from './screens/JoinScreen';
 import GroupScreen from './screens/GroupScreen';
 import RideScreen from './screens/RideScreen';
+import SettingsScreen from './screens/SettingsScreen';
 import { theme } from './theme';
 
 export type RootStackParamList = {
@@ -21,6 +22,7 @@ export type RootStackParamList = {
   Join: undefined;
   Group: undefined;
   Ride: undefined;
+  Settings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -87,6 +89,22 @@ const logoutStyles = StyleSheet.create({
   },
 });
 
+// Ride header gear → the Settings screen (keep-screen-on, future ride options).
+function SettingsButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8}>
+      <Text style={settingsStyles.icon}>⚙</Text>
+    </Pressable>
+  );
+}
+
+const settingsStyles = StyleSheet.create({
+  icon: {
+    color: theme.colors.text,
+    fontSize: 22,
+  },
+});
+
 export default function Navigation() {
   // Gate purely on displayName: no name yet → onboard; otherwise → home.
   const displayName = useStore((s) => s.displayName);
@@ -121,7 +139,21 @@ export default function Navigation() {
             />
             <Stack.Screen name="Join" component={JoinScreen} options={{ title: 'Join group' }} />
             <Stack.Screen name="Group" component={GroupScreen} options={{ title: 'Group' }} />
-            <Stack.Screen name="Ride" component={RideScreen} options={{ title: 'Ride' }} />
+            <Stack.Screen
+              name="Ride"
+              component={RideScreen}
+              options={({ navigation }) => ({
+                title: 'Ride',
+                headerRight: () => (
+                  <SettingsButton onPress={() => navigation.navigate('Settings')} />
+                ),
+              })}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{ title: 'Settings', presentation: 'modal' }}
+            />
           </>
         ) : (
           <Stack.Screen
