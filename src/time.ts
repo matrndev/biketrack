@@ -26,6 +26,9 @@ export function serverNow(offset: number): number {
 
 /** Human "Ns ago" / "Nm Ns ago" for a server timestamp, using the offset. */
 export function agoLabel(timestampMs: number, offset: number): string {
+  // A just-written serverTimestamp() is still the sentinel object on the
+  // writer's device — render "now" instead of "NaNs ago" until it resolves.
+  if (!Number.isFinite(timestampMs)) return 'now';
   const secs = Math.max(0, Math.round((serverNow(offset) - timestampMs) / 1000));
   if (secs < 60) return `${secs}s ago`;
   const mins = Math.floor(secs / 60);

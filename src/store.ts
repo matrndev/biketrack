@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const NAME_KEY = 'biketrack.displayName';
 const GROUP_KEY = 'biketrack.groupId';
+const DEDUP_KEY = 'biketrack.commsDedup';
 
 /** Latest GPS fix as captured by the background location task. */
 export type Fix = {
@@ -28,8 +29,11 @@ type State = {
   lastFix: Fix | null;
   /** Ride setting: keep the display awake. Session-only, not persisted. */
   keepAwake: boolean;
+  /** Ride setting: merge identical nearby comms into one pin. Persisted. */
+  commsDedup: boolean;
   setUid: (uid: string | null) => void;
   setKeepAwake: (keepAwake: boolean) => void;
+  setCommsDedup: (commsDedup: boolean) => Promise<void>;
   setTracking: (tracking: boolean) => void;
   setLastFix: (fix: Fix) => void;
   setDisplayName: (name: string) => Promise<void>;
@@ -47,8 +51,13 @@ export const useStore = create<State>((set) => ({
   tracking: false,
   lastFix: null,
   keepAwake: false,
+  commsDedup: true,
   setUid: (uid) => set({ uid }),
   setKeepAwake: (keepAwake) => set({ keepAwake }),
+  setCommsDedup: async (commsDedup) => {
+    await AsyncStorage.setItem(DEDUP_KEY, commsDedup ? '1' : '0');
+    set({ commsDedup });
+  },
   setTracking: (tracking) => set({ tracking }),
   setLastFix: (lastFix) => set({ lastFix }),
   setDisplayName: async (name) => {
@@ -65,10 +74,11 @@ export const useStore = create<State>((set) => ({
     set({ displayName: null, groupId: null });
   },
   hydrate: async () => {
-    const [name, groupId] = await Promise.all([
+    const [name, groupId, dedup] = await Promise.all([
       AsyncStorage.getItem(NAME_KEY),
       AsyncStorage.getItem(GROUP_KEY),
+      AsyncStorage.getItem(DEDUP_KEY),
     ]);
-    set({ displayName: name, groupId, hydrated: true });
+    set({ displayName: name, groupId, commsDedup: dedup !== '0', hydrated: true });
   },
 }));

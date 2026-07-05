@@ -35,6 +35,7 @@ import {
   useCommsAnnouncer,
 } from '../comms';
 import CommsDock, { severityColor } from '../CommsDock';
+import RideMap from '../RideMap';
 import { useRideAlerts, Straggler } from '../alerts';
 import { useServerTimeOffset, serverNow, agoLabel } from '../time';
 import { theme } from '../theme';
@@ -64,8 +65,8 @@ export default function RideScreen() {
   const groupId = useStore((s) => s.groupId);
   const group = useGroup(groupId);
   const offset = useServerTimeOffset();
-  const comms = useComms(groupId, offset);
-  useCommsAnnouncer(comms, uid, offset);
+  const { comms, loaded: commsLoaded } = useComms(groupId, offset);
+  useCommsAnnouncer(comms, commsLoaded, uid, offset, group?.members ?? {});
   const [, tick] = useState(0);
   // Driven by the switch on the Settings screen (shared via the store).
   const keepAwake = useStore((s) => s.keepAwake);
@@ -147,7 +148,8 @@ export default function RideScreen() {
       return;
     }
     Vibration.vibrate(60);
-    sendComm(groupId, uid, type, fix.lat, fix.lng, offset).catch((e: any) =>
+    const dedup = useStore.getState().commsDedup;
+    sendComm(groupId, uid, type, fix.lat, fix.lng, offset, dedup).catch((e: any) =>
       Alert.alert('Could not send', String(e?.message ?? e))
     );
   };
@@ -184,6 +186,7 @@ export default function RideScreen() {
       pres?.battery != null && pres.battery >= 0
         ? Math.round(pres.battery * 100)
         : null;
+    // Compact two-line row — the rail shares the screen with the map now.
     return (
       <View key={memberId} style={[styles.riderRow, noSignal && styles.riderRowDim]}>
         <View
@@ -200,36 +203,31 @@ export default function RideScreen() {
           </Text>
         </View>
         <View style={styles.riderInfo}>
-          <View style={styles.riderNameRow}>
-            <Text style={styles.riderName}>
-              {member?.name ?? 'Unknown'}
-              {memberId === uid ? ' (you)' : ''}
+          <Text numberOfLines={1} style={styles.riderName}>
+            {member?.name ?? 'Unknown'}
+          </Text>
+          {pres?.online === false ? (
+            <Text style={[styles.riderSub, styles.riderStatusOffline]}>offline</Text>
+          ) : noSignal ? (
+            <Text style={styles.riderSub}>no signal</Text>
+          ) : (
+            <Text style={styles.riderSub}>
+              <Text style={styles.riderSpeed}>{kmh ?? '–'}</Text> km/h
+              {batteryPct != null && (
+                <Text>
+                  {' · '}
+                  <Text
+                    style={[
+                      batteryPct <= 30 && styles.battWarn,
+                      batteryPct <= 15 && styles.battLow,
+                    ]}
+                  >
+                    {batteryPct}%
+                  </Text>
+                </Text>
+              )}
             </Text>
-            
-          </View>
-          <Text style={[styles.riderStatus, pres?.online === false && styles.riderStatusOffline]}>
-            {pres?.online === false
-              ? 'connection lost'
-              : pres?.updatedAt
-                ? `updated ${agoLabel(pres.updatedAt, offset)}`
-                : 'no signal yet'}
-          </Text>
-        </View>
-        <View style={styles.battBlock}>
-          <Text
-            style={[
-              styles.battValue,
-              batteryPct != null && batteryPct <= 30 && styles.battWarn,
-              batteryPct != null && batteryPct <= 15 && styles.battLow,
-            ]}
-          >
-            {batteryPct != null ? `${batteryPct}%` : '–'}
-          </Text>
-          <Text style={styles.speedUnit}>batt</Text>
-        </View>
-        <View style={styles.speedBlock}>
-          <Text style={styles.speedValue}>{kmh ?? '–'}</Text>
-          <Text style={styles.speedUnit}>km/h</Text>
+          )}
         </View>
       </View>
     );
@@ -249,21 +247,30 @@ export default function RideScreen() {
               key={c.id}
               style={[styles.commChip, { borderColor: severityColor(c.severity) }]}
             >
-              <Text style={styles.commChipText}>
-                {COMM_DEFS[c.type].icon} {COMM_DEFS[c.type].label}
-                {c.count > 1 ? ` ×${c.count}` : ''}
-                {' · '}
-                {agoLabel(c.createdAt, offset)}
-              </Text>
+              <Text style={styles.commChipIcon}>{COMM_DEFS[c.type].icon}</Text>
+              <View>
+                <Text style={styles.commChipLabel}>
+                  {COMM_DEFS[c.type].label}
+                  {c.count > 1 ? ` ×${c.count}` : ''}
+                </Text>
+                <Text style={styles.commChipMeta}>
+                  {c.createdBy === uid
+                    ? 'You'
+                    : group.members[c.createdBy]?.name ?? 'Unknown'}
+                  {' · '}
+                  {agoLabel(c.createdAt, offset)}
+                </Text>
+              </View>
             </View>
           ))}
         </ScrollView>
       )}
 
-      {/* The dock floats over the train only — the gap banner and the leader's
-          footer stack below it, so alerts never cover the comms button. */}
+      {/* Train rail on the left, map filling the rest. The dock floats over
+          both — the gap banner and the leader's footer stack below it, so
+          alerts never cover the comms button. */}
       <View style={styles.body}>
-        <ScrollView contentContainerStyle={styles.container}>
+        <ScrollView style={styles.rail} contentContainerStyle={styles.container}>
           {train.order.length > 0 && (
             <View style={styles.train}>
               {/* The one continuous line; riders' dots sit on top of it. */}
@@ -299,6 +306,14 @@ export default function RideScreen() {
             </View>
           )}
         </ScrollView>
+
+        <RideMap
+          riders={located}
+          members={group.members}
+          leaderId={group.meta.leaderId}
+          uid={uid}
+          pins={pins}
+        />
 
         <CommsDock onSend={sendAlert} />
       </View>
@@ -344,10 +359,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   container: {
-    padding: theme.spacing(2),
+    padding: theme.spacing(1.5),
     flexGrow: 1,
   },
-  body: { flex: 1 },
+  body: { flex: 1, flexDirection: 'row' },
+  rail: { width: '40%', flexGrow: 0 },
   commsStrip: { flexGrow: 0 },
   commsStripContent: {
     paddingHorizontal: theme.spacing(2),
@@ -355,14 +371,23 @@ const styles = StyleSheet.create({
     gap: theme.spacing(1),
   },
   commChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1),
     backgroundColor: theme.colors.surface,
-    borderWidth: 1.5,
-    borderRadius: theme.radius.sm,
-    paddingHorizontal: theme.spacing(1.25),
-    paddingVertical: theme.spacing(0.75),
+    borderWidth: 2,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing(1.5),
+    paddingVertical: theme.spacing(1),
   },
-  commChipText: {
+  commChipIcon: { fontSize: 24 },
+  commChipLabel: {
     color: theme.colors.text,
+    fontSize: theme.font.body,
+    fontFamily: theme.family.extraBold,
+  },
+  commChipMeta: {
+    color: theme.colors.textDim,
     fontSize: theme.font.small,
     fontFamily: theme.family.medium,
   },
@@ -402,48 +427,24 @@ const styles = StyleSheet.create({
   },
   riderInitialYou: { color: '#000000' },
   riderInfo: { flex: 1 },
-  riderNameRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: theme.spacing(1),
-  },
   riderName: {
     color: theme.colors.text,
     fontSize: theme.font.body,
     fontFamily: theme.family.medium,
-    flexShrink: 1,
   },
-  riderStatus: {
+  riderSub: {
     color: theme.colors.textDim,
     fontSize: theme.font.small,
     fontFamily: theme.family.regular,
   },
-  riderStatusOffline: { color: theme.colors.warning },
-  leaderBadge: {
-    color: theme.colors.accent,
-    fontSize: theme.font.small,
-    fontFamily: theme.family.bold,
-    letterSpacing: 1,
-  },
-  battBlock: { alignItems: 'flex-end', minWidth: 44 },
-  battValue: {
-    color: theme.colors.textDim,
-    fontSize: theme.font.body,
-    fontFamily: theme.family.bold,
-  },
-  battWarn: { color: theme.colors.warning },
-  battLow: { color: theme.colors.danger },
-  speedBlock: { alignItems: 'flex-end', minWidth: 48 },
-  speedValue: {
+  riderSpeed: {
     color: theme.colors.text,
-    fontSize: theme.font.h2,
+    fontSize: theme.font.body,
     fontFamily: theme.family.extraBold,
   },
-  speedUnit: {
-    color: theme.colors.textDim,
-    fontSize: theme.font.small,
-    fontFamily: theme.family.regular,
-  },
+  riderStatusOffline: { color: theme.colors.warning },
+  battWarn: { color: theme.colors.warning },
+  battLow: { color: theme.colors.danger },
   gapSegment: {
     justifyContent: 'center',
   },

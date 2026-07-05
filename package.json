@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo-google-fonts/roboto-condensed": "^0.4.2",
+    "@maplibre/maplibre-react-native": "^11.3.6",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-firebase/app": "^25.1.0",
     "@react-native-firebase/auth": "^25.1.0",

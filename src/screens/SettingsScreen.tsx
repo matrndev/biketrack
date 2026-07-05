@@ -10,6 +10,8 @@ import { theme } from '../theme';
 export default function SettingsScreen() {
   const keepAwake = useStore((s) => s.keepAwake);
   const setKeepAwake = useStore((s) => s.setKeepAwake);
+  const commsDedup = useStore((s) => s.commsDedup);
+  const setCommsDedup = useStore((s) => s.setCommsDedup);
 
   return (
     <View style={styles.screen}>
@@ -28,6 +30,23 @@ export default function SettingsScreen() {
           thumbColor={theme.colors.text}
         />
       </View>
+      <View style={styles.row}>
+        <View style={styles.rowText}>
+          <Text style={styles.rowLabel}>Merge duplicate alerts</Text>
+          <Text style={styles.rowHint}>
+            Your alerts merge with identical ones fired near the same spot
+            instead of creating a new pin each time. Turn off to always send a
+            separate alert.
+          </Text>
+        </View>
+        <Switch
+          accessibilityLabel="Merge duplicate alerts"
+          value={commsDedup}
+          onValueChange={setCommsDedup}
+          trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+          thumbColor={theme.colors.text}
+        />
+      </View>
     </View>
   );
 }
@@ -37,6 +56,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.bg,
     padding: theme.spacing(2),
+    gap: theme.spacing(1.5),
   },
   row: {
     flexDirection: 'row',

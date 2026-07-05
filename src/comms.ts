@@ -8,9 +8,11 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ref,
   onValue,
+  push,
   remove,
   runTransaction,
   serverTimestamp,
+  set,
 } from '@react-native-firebase/database';
 import { db } from './firebase';
 import { serverNow } from './time';
@@ -164,7 +166,9 @@ export function geohash(lat: number, lng: number, precision = GEOHASH_PRECISION)
  * Fire a comm at the given position. Atomic dedup: a live pin with the same
  * dedupKey gets `count`+1 and a fresh `expiresAt`; otherwise a new pin is
  * created. `offset` is the serverTimeOffset (expiresAt must be a concrete ms
- * value on the server clock).
+ * value on the server clock). With `dedup` off (Settings toggle) every send
+ * becomes its own pin under a pushed key — nothing merges, everything is
+ * announced; pins from riders who kept dedup on still merge with each other.
  */
 export async function sendComm(
   groupId: string,
@@ -172,11 +176,27 @@ export async function sendComm(
   type: CommType,
   lat: number,
   lng: number,
-  offset: number
+  offset: number,
+  dedup = true
 ): Promise<void> {
   const def = COMM_DEFS[type];
-  const dedupKey = `${type}:${geohash(lat, lng)}`;
   const now = serverNow(offset);
+  if (!dedup) {
+    const node = push(ref(db, `groups/${groupId}/comms`));
+    await set(node, {
+      type,
+      severity: def.severity,
+      lat,
+      lng,
+      dedupKey: node.key,
+      createdBy: uid,
+      createdAt: serverTimestamp(),
+      expiresAt: now + def.ttlMs,
+      count: 1,
+    });
+    return;
+  }
+  const dedupKey = `${type}:${geohash(lat, lng)}`;
   await runTransaction(ref(db, `groups/${groupId}/comms/${dedupKey}`), (current) => {
     if (current && typeof current.expiresAt === 'number' && current.expiresAt > now) {
       return {
@@ -205,18 +225,26 @@ export function activeComms(comms: Comm[], now: number): Comm[] {
 }
 
 /**
- * Live comms for a group, newest first. Also does lazy TTL cleanup: any member
- * deletes pins that have been expired for over a minute (best-effort — clients
- * race harmlessly, deletion is idempotent).
+ * Live comms for a group, newest first. `loaded` flips once the first RTDB
+ * snapshot lands — consumers must not treat the initial empty state as "no
+ * backlog" (the announcer seeds off it). Also does lazy TTL cleanup: any
+ * member deletes pins that have been expired for over a minute (best-effort —
+ * clients race harmlessly, deletion is idempotent).
  */
-export function useComms(groupId: string | null, offset: number): Comm[] {
+export function useComms(
+  groupId: string | null,
+  offset: number
+): { comms: Comm[]; loaded: boolean } {
   const [comms, setComms] = useState<Comm[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!groupId) {
       setComms([]);
+      setLoaded(false);
       return;
     }
+    setLoaded(false);
     const unsub = onValue(
       ref(db, `groups/${groupId}/comms`),
       (snap) => {
@@ -224,8 +252,12 @@ export function useComms(groupId: string | null, offset: number): Comm[] {
         const list = Object.entries(v).map(([id, c]) => ({ ...c, id }));
         list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
         setComms(list);
+        setLoaded(true);
       },
-      () => setComms([])
+      () => {
+        setComms([]);
+        setLoaded(true);
+      }
     );
     return () => unsub();
   }, [groupId]);
@@ -240,7 +272,7 @@ export function useComms(groupId: string | null, offset: number): Comm[] {
     }
   }, [groupId, comms]);
 
-  return comms;
+  return { comms, loaded };
 }
 
 // Announce keys include createdAt so a pin recreated at the same spot after
@@ -249,16 +281,20 @@ const announceKey = (c: Comm) => `${c.id}@${c.createdAt}`;
 
 /**
  * The spoken side of comms (PLAN §5.4), for the rider holding this device:
- * - a comm landing from another rider is spoken once (severity-shaped);
+ * - a comm landing from another rider is spoken once (severity-shaped),
+ *   followed by the sender's name;
  * - approaching a geo-static pin (within APPROACH_METERS and closing in)
  *   speaks its approach phrase once per pin per rider.
- * The backlog present on mount is seeded silently — joining mid-ride must not
- * read out every old pin.
+ * The backlog present when the first snapshot lands is seeded silently —
+ * joining mid-ride must not read out every old pin. Seeding waits for
+ * `loaded`: the pre-snapshot empty state must not count as the backlog.
  */
 export function useCommsAnnouncer(
   comms: Comm[],
+  loaded: boolean,
   uid: string | null,
-  offset: number
+  offset: number,
+  members: Record<string, { name: string }>
 ): void {
   const lastFix = useStore((s) => s.lastFix);
   const seeded = useRef(false);
@@ -268,6 +304,7 @@ export function useCommsAnnouncer(
 
   // New-comm announcements.
   useEffect(() => {
+    if (!loaded) return;
     const active = activeComms(comms, serverNow(offset));
     if (!seeded.current) {
       for (const c of active) spokenNew.current.add(announceKey(c));
@@ -279,9 +316,12 @@ export function useCommsAnnouncer(
       if (spokenNew.current.has(key)) continue;
       spokenNew.current.add(key);
       // The sender got haptic confirmation on tap; don't parrot back at them.
-      if (c.createdBy !== uid) speak(COMM_DEFS[c.type].spoken, c.severity);
+      if (c.createdBy !== uid) {
+        const name = members[c.createdBy]?.name;
+        speak(COMM_DEFS[c.type].spoken, c.severity, name ? `from ${name}` : undefined);
+      }
     }
-  }, [comms, uid, offset]);
+  }, [comms, loaded, uid, offset]);
 
   // "Reached the pin" — re-check whenever a fix or the pin set changes.
   useEffect(() => {
