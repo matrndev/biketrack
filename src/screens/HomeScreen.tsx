@@ -5,7 +5,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { db } from '../firebase';
-import { useStore } from '../store';
+import { useStore, defaultInitials, DEFAULT_AVATAR_COLOR } from '../store';
+import AvatarEditor from '../AvatarEditor';
 import { useServerTimeOffset, agoLabel } from '../time';
 import {
   requestTrackingPermissions,
@@ -28,6 +29,9 @@ export default function HomeScreen() {
   const [batteryOpt, setBatteryOpt] = useState<boolean | null>(null);
   const [locErr, setLocErr] = useState<string | null>(null);
   const [, tick] = useState(0);
+  const avatarColor = useStore((s) => s.avatarColor);
+  const avatarInitials = useStore((s) => s.avatarInitials);
+  const [editingAvatar, setEditingAvatar] = useState(false);
 
   // Battery-optimization status: poll every few seconds so it refreshes after
   // the user flips the exemption in system settings and comes back.
@@ -83,8 +87,31 @@ export default function HomeScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.greeting}>Hi, {displayName}</Text>
-        <Text style={styles.deviceId}>Device {uid ?? 'signing in...'}</Text>
+        <View style={styles.header}>
+          <View style={styles.avatarWrap}>
+            <Pressable
+              accessibilityLabel="Edit avatar"
+              style={[styles.avatar, { backgroundColor: avatarColor ?? DEFAULT_AVATAR_COLOR }]}
+              onPress={() => setEditingAvatar(true)}
+            >
+              <Text style={styles.avatarText}>
+                {avatarInitials ?? defaultInitials(displayName)}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Edit avatar"
+              hitSlop={8}
+              style={styles.editBadge}
+              onPress={() => setEditingAvatar(true)}
+            >
+              <Text style={styles.editBadgeText}>✎</Text>
+            </Pressable>
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.greeting}>Hi, {displayName}</Text>
+            <Text style={styles.deviceId}>Device {uid ?? 'signing in...'}</Text>
+          </View>
+        </View>
         
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Clock sync</Text>
@@ -152,6 +179,8 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
+      <AvatarEditor visible={editingAvatar} onClose={() => setEditingAvatar(false)} />
+
       <View style={styles.footer}>
         {groupId ? (
           <Pressable
@@ -181,6 +210,8 @@ export default function HomeScreen() {
   );
 }
 
+const AVATAR = 60;
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.bg },
   container: {
@@ -194,11 +225,52 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.bg,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    marginTop: theme.spacing(1),
+  },
+  headerText: { flex: 1 },
+  avatarWrap: {
+    width: AVATAR,
+    height: AVATAR,
+  },
+  avatar: {
+    width: AVATAR,
+    height: AVATAR,
+    borderRadius: AVATAR / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#000000',
+    fontSize: 24,
+    fontFamily: theme.family.extraBold,
+  },
+  editBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceAlt,
+    // Ring in the screen background color so the badge reads as cut out of
+    // the avatar circle instead of floating over it.
+    borderWidth: 2,
+    borderColor: theme.colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editBadgeText: {
+    color: theme.colors.text,
+    fontSize: 12,
+  },
   greeting: {
     color: theme.colors.text,
     fontSize: theme.font.h1,
     fontFamily: theme.family.bold,
-    marginTop: theme.spacing(1),
   },
   card: {
     backgroundColor: theme.colors.surface,
@@ -220,7 +292,6 @@ const styles = StyleSheet.create({
     color: theme.colors.textDim,
     fontSize: theme.font.small,
     fontFamily: 'monospace',
-    marginTop: -theme.spacing(1.5),
   },
   value: {
     color: theme.colors.text,

@@ -9,6 +9,14 @@ const NAME_KEY = 'biketrack.displayName';
 const GROUP_KEY = 'biketrack.groupId';
 const DEDUP_KEY = 'biketrack.commsDedup';
 const GAP_KEY = 'biketrack.gapAlertMeters';
+const AVATAR_COLOR_KEY = 'biketrack.avatarColor';
+const AVATAR_INITIALS_KEY = 'biketrack.avatarInitials';
+
+export const DEFAULT_AVATAR_COLOR = '#4C9EFF';
+
+/** Fallback avatar letters when none are set: first letter of the name. */
+export const defaultInitials = (name: string | null) =>
+  (name ?? '').trim().slice(0, 1).toUpperCase() || '?';
 
 /** Latest GPS fix as captured by the background location task. */
 export type Fix = {
@@ -35,7 +43,12 @@ type State = {
   commsDedup: boolean;
   /** Ride setting: gap size (m) that triggers the "too far" alert. Persisted. */
   gapAlertMeters: number;
+  /** Avatar background color (hex). Persisted; null → DEFAULT_AVATAR_COLOR. */
+  avatarColor: string | null;
+  /** Avatar letters (max 2). Persisted; null → first letter of displayName. */
+  avatarInitials: string | null;
   setUid: (uid: string | null) => void;
+  setAvatar: (color: string, initials: string) => Promise<void>;
   setKeepAwake: (keepAwake: boolean) => void;
   setCommsDedup: (commsDedup: boolean) => Promise<void>;
   setGapAlertMeters: (gapAlertMeters: number) => Promise<void>;
@@ -58,7 +71,16 @@ export const useStore = create<State>((set) => ({
   keepAwake: false,
   commsDedup: true,
   gapAlertMeters: DEFAULT_GAP_ALERT_METERS,
+  avatarColor: null,
+  avatarInitials: null,
   setUid: (uid) => set({ uid }),
+  setAvatar: async (color, initials) => {
+    await AsyncStorage.multiSet([
+      [AVATAR_COLOR_KEY, color],
+      [AVATAR_INITIALS_KEY, initials],
+    ]);
+    set({ avatarColor: color, avatarInitials: initials });
+  },
   setKeepAwake: (keepAwake) => set({ keepAwake }),
   setCommsDedup: async (commsDedup) => {
     await AsyncStorage.setItem(DEDUP_KEY, commsDedup ? '1' : '0');
@@ -80,15 +102,17 @@ export const useStore = create<State>((set) => ({
     set({ groupId });
   },
   reset: async () => {
-    await AsyncStorage.multiRemove([NAME_KEY, GROUP_KEY]);
-    set({ displayName: null, groupId: null });
+    await AsyncStorage.multiRemove([NAME_KEY, GROUP_KEY, AVATAR_COLOR_KEY, AVATAR_INITIALS_KEY]);
+    set({ displayName: null, groupId: null, avatarColor: null, avatarInitials: null });
   },
   hydrate: async () => {
-    const [name, groupId, dedup, gap] = await Promise.all([
+    const [name, groupId, dedup, gap, avatarColor, avatarInitials] = await Promise.all([
       AsyncStorage.getItem(NAME_KEY),
       AsyncStorage.getItem(GROUP_KEY),
       AsyncStorage.getItem(DEDUP_KEY),
       AsyncStorage.getItem(GAP_KEY),
+      AsyncStorage.getItem(AVATAR_COLOR_KEY),
+      AsyncStorage.getItem(AVATAR_INITIALS_KEY),
     ]);
     const gapMeters = gap != null ? Number(gap) : NaN;
     set({
@@ -96,6 +120,8 @@ export const useStore = create<State>((set) => ({
       groupId,
       commsDedup: dedup !== '0',
       gapAlertMeters: Number.isFinite(gapMeters) && gapMeters > 0 ? gapMeters : DEFAULT_GAP_ALERT_METERS,
+      avatarColor,
+      avatarInitials,
       hydrated: true,
     });
   },
