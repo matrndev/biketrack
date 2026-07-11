@@ -13,7 +13,15 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
-import { useGroup, leaveGroup, startRide, qrPayload, Member } from '../groups';
+import {
+  useGroup,
+  leaveGroup,
+  startRide,
+  endRide,
+  disbandGroup,
+  qrPayload,
+  Member,
+} from '../groups';
 import { useServerTimeOffset, agoLabel } from '../time';
 import { requestTrackingPermissions, startTracking } from '../location';
 import { theme } from '../theme';
@@ -114,6 +122,50 @@ export default function GroupScreen() {
     );
   };
 
+  const confirmEnd = () => {
+    Alert.alert('End ride?', 'Everyone returns to the group screen.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'End ride',
+        style: 'destructive',
+        onPress: async () => {
+          if (!groupId) return;
+          try {
+            await endRide(groupId);
+          } catch (e: any) {
+            Alert.alert('Could not end the ride', String(e?.message ?? e));
+          }
+        },
+      },
+    ]);
+  };
+
+  const confirmDisband = () => {
+    Alert.alert(
+      'Disband group?',
+      'All members will be removed and the group will be deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disband',
+          style: 'destructive',
+          onPress: async () => {
+            if (!groupId) return;
+            setLeaving(true);
+            try {
+              await disbandGroup(groupId);
+              await setGroupId(null);
+              navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+            } catch (e: any) {
+              setLeaving(false);
+              Alert.alert('Could not disband the group', String(e?.message ?? e));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -168,45 +220,59 @@ export default function GroupScreen() {
 
       <View style={styles.footer}>
         {trackErr && <Text style={styles.trackErr}>⚠ {trackErr}</Text>}
-        {isLeader ? (
-          <Pressable
-            style={[styles.startButton, starting && styles.startButtonBusy]}
-            disabled={starting}
-            onPress={async () => {
-              if (!groupId) return;
-              if (rideActive) {
-                navigation.navigate('Ride');
-                return;
-              }
-              setStarting(true);
-              try {
-                await startRide(groupId);
-                // Navigation happens via the rideActive effect above.
-              } catch (e: any) {
-                Alert.alert('Could not start the ride', String(e?.message ?? e));
-              } finally {
-                setStarting(false);
-              }
-            }}
-          >
-            <Text style={styles.startText}>
-              {rideActive ? 'Back to ride' : 'Start ride'}
+        <View style={styles.buttonRow}>
+          {isLeader ? (
+            <Pressable
+              style={[styles.startButton, starting && styles.startButtonBusy]}
+              disabled={starting}
+              onPress={async () => {
+                if (!groupId) return;
+                if (rideActive) {
+                  navigation.navigate('Ride');
+                  return;
+                }
+                setStarting(true);
+                try {
+                  await startRide(groupId);
+                  // Navigation happens via the rideActive effect above.
+                } catch (e: any) {
+                  Alert.alert('Could not start the ride', String(e?.message ?? e));
+                } finally {
+                  setStarting(false);
+                }
+              }}
+            >
+              <Text style={styles.startText}>
+                {rideActive ? 'Back to ride' : 'Start ride'}
+              </Text>
+            </Pressable>
+          ) : rideActive ? (
+            // Members can back out of the ride to check the roster/QR — give
+            // them a way back in (the navigate effect only fires on ride start).
+            <Pressable style={styles.startButton} onPress={() => navigation.navigate('Ride')}>
+              <Text style={styles.startText}>Back to ride</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.waitingHint}>
+              Waiting for the leader to start the ride…
             </Text>
+          )}
+          {isLeader && rideActive && (
+            <Pressable style={styles.dangerButton} onPress={confirmEnd}>
+              <Text style={styles.dangerText}>End ride</Text>
+            </Pressable>
+          )}
+        </View>
+        <View style={styles.buttonRow}>
+          <Pressable style={styles.dangerButton} onPress={confirmLeave}>
+            <Text style={styles.dangerText}>Leave group</Text>
           </Pressable>
-        ) : rideActive ? (
-          // Members can back out of the ride to check the roster/QR — give
-          // them a way back in (the navigate effect only fires on ride start).
-          <Pressable style={styles.startButton} onPress={() => navigation.navigate('Ride')}>
-            <Text style={styles.startText}>Back to ride</Text>
-          </Pressable>
-        ) : (
-          <Text style={styles.waitingHint}>
-            Waiting for the leader to start the ride…
-          </Text>
-        )}
-        <Pressable style={styles.leaveButton} onPress={confirmLeave}>
-          <Text style={styles.leaveText}>Leave group</Text>
-        </Pressable>
+          {isLeader && (
+            <Pressable style={styles.dangerButton} onPress={confirmDisband}>
+              <Text style={styles.dangerText}>Disband group</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -309,11 +375,17 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.bg,
   },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: theme.spacing(1.5),
+  },
   startButton: {
+    flex: 1,
     backgroundColor: theme.colors.accent,
     borderRadius: theme.radius.md,
     paddingVertical: theme.spacing(2),
     alignItems: 'center',
+    justifyContent: 'center',
   },
   startButtonBusy: { opacity: 0.6 },
   startText: {
@@ -322,19 +394,23 @@ const styles = StyleSheet.create({
     fontFamily: theme.family.extraBold,
   },
   waitingHint: {
+    flex: 1,
     color: theme.colors.textDim,
     fontSize: theme.font.small,
     fontFamily: theme.family.regular,
     textAlign: 'center',
+    alignSelf: 'center',
   },
-  leaveButton: {
+  dangerButton: {
+    flex: 1,
     borderWidth: 1.5,
     borderColor: theme.colors.danger,
     borderRadius: theme.radius.md,
     paddingVertical: theme.spacing(2),
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  leaveText: {
+  dangerText: {
     color: theme.colors.danger,
     fontSize: theme.font.h2,
     fontFamily: theme.family.extraBold,

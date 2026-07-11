@@ -141,6 +141,20 @@ export async function endRide(groupId: string): Promise<void> {
 }
 
 /**
+ * Disband the group (leader). Deleting the whole group node kicks every member
+ * at once: their useGroup goes null → they clear their stored groupId and fall
+ * back Home, and useRideLifecycle tears down presence + stops the location
+ * foreground service. The ride flag dies with the node, so this ends the ride too.
+ */
+export async function disbandGroup(groupId: string): Promise<void> {
+  const snap = await get(ref(db, `groups/${groupId}/meta/joinCode`));
+  const joinCode = snap.val();
+  const updates: Record<string, unknown> = { [`groups/${groupId}`]: null };
+  if (typeof joinCode === 'string') updates[`joinCodes/${joinCode}`] = null;
+  await update(ref(db), updates);
+}
+
+/**
  * Leave a group. Last member out deletes the group and frees its join code;
  * a departing leader hands leadership to the longest-standing member (so the
  * last member standing is always the leader).

@@ -2,8 +2,8 @@
 // direction of travel, order riders front → back, and measure straight-line
 // (haversine) gaps between neighbours. Pure functions — no Firebase, no React.
 
-/** Gaps larger than this get highlighted (ties into the "too far" alert, M5). */
-export const GAP_ALERT_METERS = 50;
+/** Default gap-alert threshold; each rider can override it in Settings (store.gapAlertMeters). */
+export const DEFAULT_GAP_ALERT_METERS = 50;
 
 /** Below this speed (m/s) a rider's heading is noise — GPS headings drift when stopped. */
 const MIN_MOVING_SPEED = 1;

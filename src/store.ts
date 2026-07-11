@@ -3,10 +3,12 @@
 // uid comes from anonymous auth.
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEFAULT_GAP_ALERT_METERS } from './train';
 
 const NAME_KEY = 'biketrack.displayName';
 const GROUP_KEY = 'biketrack.groupId';
 const DEDUP_KEY = 'biketrack.commsDedup';
+const GAP_KEY = 'biketrack.gapAlertMeters';
 
 /** Latest GPS fix as captured by the background location task. */
 export type Fix = {
@@ -31,9 +33,12 @@ type State = {
   keepAwake: boolean;
   /** Ride setting: merge identical nearby comms into one pin. Persisted. */
   commsDedup: boolean;
+  /** Ride setting: gap size (m) that triggers the "too far" alert. Persisted. */
+  gapAlertMeters: number;
   setUid: (uid: string | null) => void;
   setKeepAwake: (keepAwake: boolean) => void;
   setCommsDedup: (commsDedup: boolean) => Promise<void>;
+  setGapAlertMeters: (gapAlertMeters: number) => Promise<void>;
   setTracking: (tracking: boolean) => void;
   setLastFix: (fix: Fix) => void;
   setDisplayName: (name: string) => Promise<void>;
@@ -52,11 +57,16 @@ export const useStore = create<State>((set) => ({
   lastFix: null,
   keepAwake: false,
   commsDedup: true,
+  gapAlertMeters: DEFAULT_GAP_ALERT_METERS,
   setUid: (uid) => set({ uid }),
   setKeepAwake: (keepAwake) => set({ keepAwake }),
   setCommsDedup: async (commsDedup) => {
     await AsyncStorage.setItem(DEDUP_KEY, commsDedup ? '1' : '0');
     set({ commsDedup });
+  },
+  setGapAlertMeters: async (gapAlertMeters) => {
+    await AsyncStorage.setItem(GAP_KEY, String(gapAlertMeters));
+    set({ gapAlertMeters });
   },
   setTracking: (tracking) => set({ tracking }),
   setLastFix: (lastFix) => set({ lastFix }),
@@ -74,11 +84,19 @@ export const useStore = create<State>((set) => ({
     set({ displayName: null, groupId: null });
   },
   hydrate: async () => {
-    const [name, groupId, dedup] = await Promise.all([
+    const [name, groupId, dedup, gap] = await Promise.all([
       AsyncStorage.getItem(NAME_KEY),
       AsyncStorage.getItem(GROUP_KEY),
       AsyncStorage.getItem(DEDUP_KEY),
+      AsyncStorage.getItem(GAP_KEY),
     ]);
-    set({ displayName: name, groupId, commsDedup: dedup !== '0', hydrated: true });
+    const gapMeters = gap != null ? Number(gap) : NaN;
+    set({
+      displayName: name,
+      groupId,
+      commsDedup: dedup !== '0',
+      gapAlertMeters: Number.isFinite(gapMeters) && gapMeters > 0 ? gapMeters : DEFAULT_GAP_ALERT_METERS,
+      hydrated: true,
+    });
   },
 }));

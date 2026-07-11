@@ -11,7 +11,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   Text,
-  Pressable,
   StyleSheet,
   ScrollView,
   View,
@@ -24,8 +23,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
-import { useGroup, endRide } from '../groups';
-import { buildTrain, GAP_ALERT_METERS, RiderPoint } from '../train';
+import { useGroup } from '../groups';
+import { buildTrain, RiderPoint } from '../train';
 import {
   COMM_DEFS,
   CommType,
@@ -70,6 +69,9 @@ export default function RideScreen() {
   const [, tick] = useState(0);
   // Driven by the switch on the Settings screen (shared via the store).
   const keepAwake = useStore((s) => s.keepAwake);
+  // Per-rider "too far" threshold, set on the Settings screen. Also drives the
+  // wide-gap highlight in the rail so the two always agree.
+  const gapAlertMeters = useStore((s) => s.gapAlertMeters);
 
   // Keep the display on while the toggle is on; released on toggle-off and on
   // unmount so leaving the ride never leaves the screen pinned awake.
@@ -124,7 +126,7 @@ export default function RideScreen() {
       isYou: behind.id === uid,
     };
   }
-  const rideAlert = useRideAlerts(group, uid, offset, straggler, GAP_ALERT_METERS);
+  const rideAlert = useRideAlerts(group, uid, offset, straggler, gapAlertMeters);
 
   if (!group) {
     // Group gone — GroupScreen (still mounted beneath) resets the stack home.
@@ -135,7 +137,6 @@ export default function RideScreen() {
     );
   }
 
-  const isLeader = group.meta.leaderId === uid;
   const pins = activeComms(comms, serverNow(offset));
 
   // One tap → pin at our current fix. Instant haptic confirm (the rider is
@@ -152,24 +153,6 @@ export default function RideScreen() {
     sendComm(groupId, uid, type, fix.lat, fix.lng, offset, dedup).catch((e: any) =>
       Alert.alert('Could not send', String(e?.message ?? e))
     );
-  };
-
-  const confirmEnd = () => {
-    Alert.alert('End ride?', 'Everyone returns to the group screen.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'End ride',
-        style: 'destructive',
-        onPress: async () => {
-          if (!groupId) return;
-          try {
-            await endRide(groupId);
-          } catch (e: any) {
-            Alert.alert('Could not end the ride', String(e?.message ?? e));
-          }
-        },
-      },
-    ]);
   };
 
   const riderRow = (memberId: string, noSignal: boolean) => {
@@ -267,8 +250,8 @@ export default function RideScreen() {
       )}
 
       {/* Train rail on the left, map filling the rest. The dock floats over
-          both — the gap banner and the leader's footer stack below it, so
-          alerts never cover the comms button. */}
+          both — the gap banner stacks below it, so alerts never cover the
+          comms button. */}
       <View style={styles.body}>
         <ScrollView style={styles.rail} contentContainerStyle={styles.container}>
           {train.order.length > 0 && (
@@ -277,7 +260,7 @@ export default function RideScreen() {
               <View style={styles.trainLine} />
               {train.order.map((rider, i) => {
                 const gap = train.gaps[i]; // to the rider behind
-                const wide = gap != null && gap > GAP_ALERT_METERS;
+                const wide = gap != null && gap > gapAlertMeters;
                 return (
                   <View key={rider.id}>
                     {riderRow(rider.id, false)}
@@ -333,14 +316,6 @@ export default function RideScreen() {
           >
             {rideAlert.message}
           </Text>
-        </View>
-      )}
-
-      {isLeader && (
-        <View style={styles.footer}>
-          <Pressable style={styles.endButton} onPress={confirmEnd}>
-            <Text style={styles.endText}>End ride</Text>
-          </Pressable>
         </View>
       )}
     </View>
@@ -487,24 +462,6 @@ const styles = StyleSheet.create({
     fontSize: theme.font.small,
     fontFamily: theme.family.medium,
     letterSpacing: 1,
-  },
-  footer: {
-    padding: theme.spacing(2),
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    backgroundColor: theme.colors.bg,
-  },
-  endButton: {
-    borderWidth: 1.5,
-    borderColor: theme.colors.danger,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.spacing(2),
-    alignItems: 'center',
-  },
-  endText: {
-    color: theme.colors.danger,
-    fontSize: theme.font.h2,
-    fontFamily: theme.family.extraBold,
   },
   alertBanner: {
     position: 'absolute',
