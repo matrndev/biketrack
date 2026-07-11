@@ -15,6 +15,7 @@ import { COMM_DEFS, Comm } from './comms';
 import { severityColor } from './CommsDock';
 import type { Member } from './groups';
 import type { RiderPoint } from './train';
+import { useStore, defaultInitials, DEFAULT_AVATAR_COLOR } from './store';
 import { theme } from './theme';
 
 // CARTO dark matter — free raster-free GL style that matches the OLED theme.
@@ -63,6 +64,10 @@ type Props = {
 export default function RideMap({ riders, members, leaderId, uid, pins }: Props) {
   const camera = useRef<CameraRef>(null);
   const [follow, setFollow] = useState(true);
+  // My own avatar renders from the local store (always freshest), like the
+  // ride rail; others' come from their synced member node.
+  const avatarColor = useStore((s) => s.avatarColor);
+  const avatarInitials = useStore((s) => s.avatarInitials);
 
   // Refit whenever positions/pins move — but only in follow mode. Keyed on the
   // rounded coordinates so identical snapshots don't re-animate the camera.
@@ -98,21 +103,30 @@ export default function RideMap({ riders, members, leaderId, uid, pins }: Props)
             </View>
           </Marker>
         ))}
-        {riders.map((r) => (
-          <Marker key={r.id} id={`rider-${r.id}`} lngLat={[r.lng, r.lat]}>
-            <View
-              style={[
-                styles.riderPin,
-                r.id === leaderId && styles.riderPinLeader,
-                r.id === uid && styles.riderPinYou,
-              ]}
-            >
-              <Text style={[styles.riderPinText, r.id === uid && styles.riderPinTextYou]}>
-                {(members[r.id]?.name ?? '?').slice(0, 1).toUpperCase()}
-              </Text>
-            </View>
-          </Marker>
-        ))}
+        {riders.map((r) => {
+          const isSelf = r.id === uid;
+          const color = isSelf
+            ? avatarColor ?? DEFAULT_AVATAR_COLOR
+            : members[r.id]?.avatarColor ?? null;
+          const initials =
+            (isSelf ? avatarInitials : members[r.id]?.avatarInitials) ??
+            defaultInitials(members[r.id]?.name ?? null);
+          return (
+            <Marker key={r.id} id={`rider-${r.id}`} lngLat={[r.lng, r.lat]}>
+              <View
+                style={[
+                  styles.riderPin,
+                  color ? { backgroundColor: color } : styles.riderPinPlain,
+                  r.id === leaderId && styles.riderPinLeader,
+                ]}
+              >
+                <Text style={[styles.riderPinText, !color && styles.riderPinTextPlain]}>
+                  {initials}
+                </Text>
+              </View>
+            </Marker>
+          );
+        })}
       </MapLibreMap>
 
       {!follow && (
@@ -133,20 +147,24 @@ const styles = StyleSheet.create({
     width: PIN,
     height: PIN,
     borderRadius: PIN / 2,
-    backgroundColor: theme.colors.surfaceAlt,
-    borderWidth: 2,
-    borderColor: theme.colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  riderPinLeader: { borderColor: theme.colors.accent },
-  riderPinYou: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
+  // No custom color synced yet — neutral dot, like the ride rail's.
+  riderPinPlain: {
+    backgroundColor: theme.colors.surfaceAlt,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+  },
+  // White ring so it stays visible on any avatar color (the accent doubles as
+  // the default avatar color, so an accent ring would vanish on it).
+  riderPinLeader: { borderWidth: 2, borderColor: '#FFFFFF' },
   riderPinText: {
-    color: theme.colors.text,
+    color: '#000000',
     fontSize: theme.font.small,
     fontFamily: theme.family.extraBold,
   },
-  riderPinTextYou: { color: '#000000' },
+  riderPinTextPlain: { color: theme.colors.text },
   commPin: {
     flexDirection: 'row',
     alignItems: 'center',

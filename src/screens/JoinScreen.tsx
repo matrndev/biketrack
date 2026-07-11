@@ -6,6 +6,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
 import { joinGroup, parseJoinCode } from '../groups';
+import {
+  useConnected,
+  withTimeout,
+  WRITE_TIMEOUT_MS,
+  OFFLINE_MESSAGE,
+  TIMEOUT_MESSAGE,
+} from '../connection';
 import { theme } from '../theme';
 import KeyboardAwareScreen from '../KeyboardAwareScreen';
 
@@ -19,15 +26,27 @@ export default function JoinScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const connected = useConnected();
   // QR fires the scan callback many times per second — latch on the first hit.
   const scanLock = useRef(false);
 
   const join = async (joinCode: string) => {
     if (!uid || !displayName || busy) return;
+    if (!connected) {
+      // Release the QR latch so scanning works again once we're back online.
+      scanLock.current = false;
+      setError(OFFLINE_MESSAGE);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const groupId = await joinGroup(joinCode, uid, displayName);
+      const { avatarColor, avatarInitials } = useStore.getState();
+      const groupId = await withTimeout(
+        joinGroup(joinCode, uid, displayName, avatarColor, avatarInitials),
+        WRITE_TIMEOUT_MS,
+        TIMEOUT_MESSAGE
+      );
       await setGroupId(groupId);
       navigation.reset({ index: 0, routes: [{ name: 'Group' }] });
     } catch (e: any) {
@@ -90,10 +109,11 @@ export default function JoinScreen() {
         returnKeyType="done"
         onSubmitEditing={submitManual}
       />
+      {!connected && <Text style={styles.error}>{OFFLINE_MESSAGE}</Text>}
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable
-        style={[styles.button, (code.length !== 6 || busy) && styles.buttonDisabled]}
-        disabled={code.length !== 6 || busy}
+        style={[styles.button, (code.length !== 6 || busy || !connected) && styles.buttonDisabled]}
+        disabled={code.length !== 6 || busy || !connected}
         onPress={submitManual}
       >
         <Text style={styles.buttonText}>{busy ? 'Joining…' : 'Join'}</Text>

@@ -12,7 +12,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
-import { useStore } from '../store';
+import { useStore, defaultInitials, DEFAULT_AVATAR_COLOR } from '../store';
 import {
   useGroup,
   leaveGroup,
@@ -31,6 +31,8 @@ export default function GroupScreen() {
   const uid = useStore((s) => s.uid);
   const groupId = useStore((s) => s.groupId);
   const setGroupId = useStore((s) => s.setGroupId);
+  const avatarColor = useStore((s) => s.avatarColor);
+  const avatarInitials = useStore((s) => s.avatarInitials);
   const group = useGroup(groupId);
   const offset = useServerTimeOffset();
   const [leaving, setLeaving] = useState(false);
@@ -142,12 +144,12 @@ export default function GroupScreen() {
 
   const confirmDisband = () => {
     Alert.alert(
-      'Disband group?',
-      'All members will be removed and the group will be deleted.',
+      'Delete group?',
+      'All members will be removed and the group will be disbanded.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Disband',
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             if (!groupId) return;
@@ -158,7 +160,7 @@ export default function GroupScreen() {
               navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
             } catch (e: any) {
               setLeaving(false);
-              Alert.alert('Could not disband the group', String(e?.message ?? e));
+              Alert.alert('Could not delete the group', String(e?.message ?? e));
             }
           },
         },
@@ -190,14 +192,38 @@ export default function GroupScreen() {
           </Text>
           {roster.map(([memberId, member]: [string, Member]) => {
             const pres = group.presence[memberId];
+            // My own avatar renders from the local store (always freshest);
+            // others' come from their synced member node. No custom color →
+            // neutral dot with the name's first letter, like the ride rail.
+            const isSelf = memberId === uid;
+            const color = isSelf
+              ? avatarColor ?? DEFAULT_AVATAR_COLOR
+              : member.avatarColor ?? null;
+            const initials =
+              (isSelf ? avatarInitials : member.avatarInitials) ??
+              defaultInitials(member.name);
             return (
               <View key={memberId} style={styles.memberRow}>
-                <View
-                  style={[
-                    styles.presenceDot,
-                    { backgroundColor: pres?.online ? theme.colors.success : theme.colors.border },
-                  ]}
-                />
+                <View style={styles.memberAvatarWrap}>
+                  <View
+                    style={[
+                      styles.memberAvatar,
+                      color ? { backgroundColor: color } : styles.memberAvatarPlain,
+                    ]}
+                  >
+                    <Text
+                      style={[styles.memberAvatarText, !color && styles.memberAvatarTextPlain]}
+                    >
+                      {initials}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.presenceDot,
+                      { backgroundColor: pres?.online ? theme.colors.success : theme.colors.border },
+                    ]}
+                  />
+                </View>
                 <View style={styles.memberInfo}>
                   <Text style={styles.memberName}>
                     {member.name}
@@ -254,7 +280,7 @@ export default function GroupScreen() {
             </Pressable>
           ) : (
             <Text style={styles.waitingHint}>
-              Waiting for the leader to start the ride…
+              Waiting for the leader to start the ride...
             </Text>
           )}
           {isLeader && rideActive && (
@@ -269,7 +295,7 @@ export default function GroupScreen() {
           </Pressable>
           {isLeader && (
             <Pressable style={styles.dangerButton} onPress={confirmDisband}>
-              <Text style={styles.dangerText}>Disband group</Text>
+              <Text style={styles.dangerText}>Delete group</Text>
             </Pressable>
           )}
         </View>
@@ -277,6 +303,8 @@ export default function GroupScreen() {
     </View>
   );
 }
+
+const AVATAR = 44;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.bg },
@@ -339,10 +367,40 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
+  memberAvatarWrap: {
+    width: AVATAR,
+    height: AVATAR,
+  },
+  memberAvatar: {
+    width: AVATAR,
+    height: AVATAR,
+    borderRadius: AVATAR / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // No custom color synced yet — neutral dot like the ride rail's.
+  memberAvatarPlain: {
+    backgroundColor: theme.colors.surfaceAlt,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+  },
+  memberAvatarText: {
+    color: '#000000',
+    fontSize: theme.font.body,
+    fontFamily: theme.family.extraBold,
+  },
+  memberAvatarTextPlain: { color: theme.colors.text },
+  // Online indicator, badged onto the avatar's corner. Ringed in the card
+  // background so it reads as cut out of the circle.
   presenceDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: theme.colors.surface,
   },
   memberInfo: { flex: 1 },
   memberName: {

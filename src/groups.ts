@@ -21,6 +21,9 @@ export type Member = {
   name: string;
   role: Role;
   joinedAt: number;
+  /** Avatar customization (set in the Home screen editor); absent until customized. */
+  avatarColor?: string | null;
+  avatarInitials?: string | null;
 };
 
 export type GroupMeta = {
@@ -79,7 +82,9 @@ async function reserveJoinCode(groupId: string): Promise<string> {
 export async function createGroup(
   groupName: string,
   uid: string,
-  displayName: string
+  displayName: string,
+  avatarColor: string | null = null,
+  avatarInitials: string | null = null
 ): Promise<string> {
   const groupId = push(ref(db, 'groups')).key!;
   const joinCode = await reserveJoinCode(groupId);
@@ -94,6 +99,8 @@ export async function createGroup(
       name: displayName,
       role: 'leader',
       joinedAt: serverTimestamp(),
+      avatarColor,
+      avatarInitials,
     },
   });
   return groupId;
@@ -103,7 +110,9 @@ export async function createGroup(
 export async function joinGroup(
   code: string,
   uid: string,
-  displayName: string
+  displayName: string,
+  avatarColor: string | null = null,
+  avatarInitials: string | null = null
 ): Promise<string> {
   const codeSnap = await get(ref(db, `joinCodes/${code}`));
   const groupId = codeSnap.val();
@@ -123,8 +132,23 @@ export async function joinGroup(
     name: displayName,
     role: existing?.role ?? 'member',
     joinedAt: existing?.joinedAt ?? serverTimestamp(),
+    avatarColor,
+    avatarInitials,
   });
   return groupId;
+}
+
+/** Sync the local avatar customization to our member node so others see it. */
+export async function updateMemberAvatar(
+  groupId: string,
+  uid: string,
+  avatarColor: string,
+  avatarInitials: string
+): Promise<void> {
+  await update(ref(db, `groups/${groupId}/members/${uid}`), {
+    avatarColor,
+    avatarInitials,
+  });
 }
 
 /**

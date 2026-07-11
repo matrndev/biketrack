@@ -1,7 +1,9 @@
 // Ride screen (M3+M4+M5): the train view plus the comms dock. One continuous
-// vertical line top → bottom, a circle per rider ordered front → back along
-// the direction of travel, with the space between circles proportional to the
-// real gap in meters. Each rider shows a live speed readout and battery %.
+// vertical line top → bottom, a circle per rider (customizer avatar color +
+// initials) ordered front → back along the direction of travel, name plate
+// under the circle, big speed/battery readout to its right. Gap segments track
+// real meters but are squeezed proportionally to the rail's height so the
+// whole train always fits on screen — no scrolling to find the last rider.
 // Over-threshold gaps turn the segment yellow; ride alerts (dropped
 // connections, someone too far — PLAN §5.5) are spoken and surface as a top
 // banner that auto-dismisses, so they never cover the comms dock. Comms:
@@ -22,7 +24,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
-import { useStore } from '../store';
+import { useStore, defaultInitials, DEFAULT_AVATAR_COLOR } from '../store';
 import { useGroup } from '../groups';
 import { buildTrain, RiderPoint } from '../train';
 import {
@@ -49,14 +51,26 @@ function elapsedLabel(startedAt: number, offset: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
-// Gap → segment height. Linear so on-screen spacing tracks real meters, with a
-// floor so the label always fits and a cap so one straggler can't stretch the
-// view into uselessness.
+// Gap → segment height. Ideal heights are linear in real meters (with a floor
+// so the label always fits and a cap so one straggler can't dominate). When
+// the ideal train is taller than the rail, every gap gives up height in
+// proportion to what it has to spare (down to the floor), so the full train
+// always fits the viewport and relative spacing is preserved.
 const PX_PER_METER = 3;
-const GAP_MIN_PX = 48;
+const GAP_MIN_PX = 28;
 const GAP_MAX_PX = 400;
-const gapHeight = (meters: number) =>
-  Math.min(GAP_MAX_PX, Math.max(GAP_MIN_PX, meters * PX_PER_METER));
+const fitGapHeights = (gapsMeters: number[], available: number): number[] => {
+  const ideal = gapsMeters.map((m) =>
+    Math.min(GAP_MAX_PX, Math.max(GAP_MIN_PX, m * PX_PER_METER))
+  );
+  const total = ideal.reduce((a, b) => a + b, 0);
+  if (total <= available) return ideal;
+  const shrinkable = ideal.map((h) => h - GAP_MIN_PX);
+  const totalShrinkable = shrinkable.reduce((a, b) => a + b, 0);
+  if (totalShrinkable <= 0) return ideal;
+  const k = Math.min(1, (total - available) / totalShrinkable);
+  return ideal.map((h, i) => h - shrinkable[i] * k);
+};
 
 export default function RideScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -67,6 +81,12 @@ export default function RideScreen() {
   const { comms, loaded: commsLoaded } = useComms(groupId, offset);
   useCommsAnnouncer(comms, commsLoaded, uid, offset, group?.members ?? {});
   const [, tick] = useState(0);
+  // My own avatar renders from the local store (always freshest), like the
+  // Group screen roster; others' come from their synced member node.
+  const avatarColor = useStore((s) => s.avatarColor);
+  const avatarInitials = useStore((s) => s.avatarInitials);
+  // Measured rail height — the budget the gap segments must fit into.
+  const [railH, setRailH] = useState(0);
   // Driven by the switch on the Settings screen (shared via the store).
   const keepAwake = useStore((s) => s.keepAwake);
   // Per-rider "too far" threshold, set on the Settings screen. Also drives the
@@ -159,6 +179,13 @@ export default function RideScreen() {
     const member = group.members[memberId];
     const pres = group.presence[memberId];
     const leader = memberId === group.meta.leaderId;
+    const isSelf = memberId === uid;
+    const color = isSelf
+      ? avatarColor ?? DEFAULT_AVATAR_COLOR
+      : member?.avatarColor ?? null;
+    const initials =
+      (isSelf ? avatarInitials : member?.avatarInitials) ??
+      defaultInitials(member?.name ?? null);
     // GPS speed is m/s; Android reports -1 when unknown.
     const kmh =
       !noSignal && pres?.speed != null && pres.speed >= 0
@@ -169,47 +196,52 @@ export default function RideScreen() {
       pres?.battery != null && pres.battery >= 0
         ? Math.round(pres.battery * 100)
         : null;
-    // Compact two-line row — the rail shares the screen with the map now.
+    // Avatar with the name plate below it; big speed/battery readout to the
+    // right, aligned to the circle's center.
     return (
       <View key={memberId} style={[styles.riderRow, noSignal && styles.riderRowDim]}>
-        <View
-          style={[
-            styles.riderDot,
-            leader && styles.riderDotLeader,
-            memberId === uid && styles.riderDotYou,
-          ]}
-        >
-          <Text
-            style={[styles.riderInitial, memberId === uid && styles.riderInitialYou]}
+        <View style={styles.riderCol}>
+          <View
+            style={[
+              styles.riderDot,
+              color ? { backgroundColor: color } : styles.riderDotPlain,
+              leader && styles.riderDotLeader,
+            ]}
           >
-            {(member?.name ?? '?').slice(0, 1).toUpperCase()}
-          </Text>
+            <Text style={[styles.riderInitial, !color && styles.riderInitialPlain]}>
+              {initials}
+            </Text>
+          </View>
+          <View style={styles.nameBox}>
+            <Text numberOfLines={1} style={styles.riderName}>
+              {member?.name ?? 'Unknown'}
+            </Text>
+          </View>
         </View>
-        <View style={styles.riderInfo}>
-          <Text numberOfLines={1} style={styles.riderName}>
-            {member?.name ?? 'Unknown'}
-          </Text>
+        <View style={styles.riderStats}>
           {pres?.online === false ? (
-            <Text style={[styles.riderSub, styles.riderStatusOffline]}>offline</Text>
+            <Text style={[styles.riderStatus, styles.riderStatusOffline]}>offline</Text>
           ) : noSignal ? (
-            <Text style={styles.riderSub}>no signal</Text>
+            <Text style={styles.riderStatus}>no signal</Text>
           ) : (
-            <Text style={styles.riderSub}>
-              <Text style={styles.riderSpeed}>{kmh ?? '–'}</Text> km/h
+            <>
+              <Text numberOfLines={1} style={styles.speedText}>
+                {kmh ?? '–'}
+                <Text style={styles.speedUnit}> km/h</Text>
+              </Text>
               {batteryPct != null && (
-                <Text>
-                  {' · '}
-                  <Text
-                    style={[
-                      batteryPct <= 30 && styles.battWarn,
-                      batteryPct <= 15 && styles.battLow,
-                    ]}
-                  >
-                    {batteryPct}%
-                  </Text>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.battText,
+                    batteryPct <= 30 && styles.battWarn,
+                    batteryPct <= 15 && styles.battLow,
+                  ]}
+                >
+                  {batteryPct}%
                 </Text>
               )}
-            </Text>
+            </>
           )}
         </View>
       </View>
@@ -251,32 +283,49 @@ export default function RideScreen() {
 
       {/* Train rail on the left, map filling the rest. The dock floats over
           both — the gap banner stacks below it, so alerts never cover the
-          comms button. */}
+          comms button. Gap segments are fitted to the measured rail height so
+          the last rider is always on screen; the ScrollView only kicks in if
+          even the minimum-height train can't fit (many riders, tiny screen). */}
       <View style={styles.body}>
-        <ScrollView style={styles.rail} contentContainerStyle={styles.container}>
-          {train.order.length > 0 && (
-            <View style={styles.train}>
-              {/* The one continuous line; riders' dots sit on top of it. */}
-              <View style={styles.trainLine} />
-              {train.order.map((rider, i) => {
-                const gap = train.gaps[i]; // to the rider behind
-                const wide = gap != null && gap > gapAlertMeters;
-                return (
-                  <View key={rider.id}>
-                    {riderRow(rider.id, false)}
-                    {gap != null && (
-                      <View style={[styles.gapSegment, { height: gapHeight(gap) }]}>
-                        {wide && <View style={styles.gapLineWide} />}
-                        <Text style={[styles.gapLabel, wide && styles.gapLabelWide]}>
-                          {Math.round(gap)} m
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          )}
+        <ScrollView
+          style={styles.rail}
+          contentContainerStyle={styles.container}
+          onLayout={(e) => setRailH(e.nativeEvent.layout.height)}
+        >
+          {train.order.length > 0 && (() => {
+            // Height the fixed pieces consume; the rest is the gap budget.
+            const fixedH =
+              RAIL_PAD * 2 +
+              train.order.length * ROW_H +
+              (unlocated.length > 0
+                ? theme.spacing(4) + NO_SIGNAL_LABEL_H +
+                  unlocated.length * (ROW_H + theme.spacing(1))
+                : 0);
+            const gapHeights = fitGapHeights(train.gaps, railH - fixedH);
+            return (
+              <View style={styles.train}>
+                {/* The one continuous line; riders' dots sit on top of it. */}
+                <View style={styles.trainLine} />
+                {train.order.map((rider, i) => {
+                  const gap = train.gaps[i]; // to the rider behind
+                  const wide = gap != null && gap > gapAlertMeters;
+                  return (
+                    <View key={rider.id}>
+                      {riderRow(rider.id, false)}
+                      {gap != null && (
+                        <View style={[styles.gapSegment, { height: gapHeights[i] }]}>
+                          {wide && <View style={styles.gapLineWide} />}
+                          <Text style={[styles.gapLabel, wide && styles.gapLabelWide]}>
+                            {Math.round(gap)} m
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })()}
 
           {train.order.length === 0 && (
             <Text style={styles.emptyHint}>Waiting for GPS fixes…</Text>
@@ -323,7 +372,15 @@ export default function RideScreen() {
 }
 
 const DOT = 44;
-const LINE_X = DOT / 2 - 1; // centers the 2px line under the dots
+const COL_W = 60; // avatar column: circle + name plate, both centered
+const LINE_X = COL_W / 2 - 1; // centers the 2px line under the dots
+const NAME_MT = 2;
+const NAME_H = 18;
+// Fixed row height (avatar + name plate) — lets the gap-fit math know exactly
+// how much of the rail the rows consume without a second layout pass.
+const ROW_H = DOT + NAME_MT + NAME_H;
+const RAIL_PAD = 8; // styles.container padding
+const NO_SIGNAL_LABEL_H = 16; // small font line + block gap
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.bg },
@@ -334,11 +391,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   container: {
-    padding: theme.spacing(1.5),
+    padding: RAIL_PAD,
     flexGrow: 1,
   },
   body: { flex: 1, flexDirection: 'row' },
-  rail: { width: '40%', flexGrow: 0 },
+  rail: { width: 140, flexGrow: 0 },
   commsStrip: { flexGrow: 0 },
   commsStripContent: {
     paddingHorizontal: theme.spacing(2),
@@ -379,43 +436,77 @@ const styles = StyleSheet.create({
   },
   riderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing(1.5),
+    alignItems: 'flex-start',
+    height: ROW_H,
+    gap: theme.spacing(1),
   },
   riderRowDim: { opacity: 0.5 },
+  riderCol: {
+    width: COL_W,
+    alignItems: 'center',
+  },
   riderDot: {
     width: DOT,
     height: DOT,
     borderRadius: DOT / 2,
-    backgroundColor: theme.colors.surfaceAlt,
-    borderWidth: 2,
-    borderColor: theme.colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  riderDotLeader: { borderColor: theme.colors.accent },
-  riderDotYou: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
+  // No custom color synced yet — neutral dot, like the Group screen roster.
+  riderDotPlain: {
+    backgroundColor: theme.colors.surfaceAlt,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+  },
+  // White ring so it stays visible on any avatar color (the accent doubles as
+  // the default avatar color, so an accent ring would vanish on it).
+  riderDotLeader: { borderWidth: 2, borderColor: '#FFFFFF' },
   riderInitial: {
-    color: theme.colors.text,
+    color: '#000000',
     fontSize: theme.font.body,
     fontFamily: theme.family.extraBold,
   },
-  riderInitialYou: { color: '#000000' },
-  riderInfo: { flex: 1 },
+  riderInitialPlain: { color: theme.colors.text },
+  // Name plate under the circle; opaque so it masks the train line behind it.
+  nameBox: {
+    marginTop: NAME_MT,
+    height: NAME_H,
+    maxWidth: COL_W,
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.surfaceAlt,
+  },
   riderName: {
     color: theme.colors.text,
-    fontSize: theme.font.body,
+    fontSize: 11,
     fontFamily: theme.family.medium,
   },
-  riderSub: {
+  // Speed + battery column, centered on the full row (circle + name plate).
+  riderStats: {
+    flex: 1,
+    height: ROW_H,
+    justifyContent: 'center',
+  },
+  speedText: {
+    color: theme.colors.text,
+    fontSize: 26,
+    fontFamily: theme.family.extraBold,
+  },
+  speedUnit: {
+    color: theme.colors.textDim,
+    fontSize: 12,
+    fontFamily: theme.family.medium,
+  },
+  battText: {
+    color: theme.colors.text,
+    fontSize: 17,
+    fontFamily: theme.family.medium,
+  },
+  riderStatus: {
     color: theme.colors.textDim,
     fontSize: theme.font.small,
     fontFamily: theme.family.regular,
-  },
-  riderSpeed: {
-    color: theme.colors.text,
-    fontSize: theme.font.body,
-    fontFamily: theme.family.extraBold,
   },
   riderStatusOffline: { color: theme.colors.warning },
   battWarn: { color: theme.colors.warning },
@@ -433,7 +524,7 @@ const styles = StyleSheet.create({
   },
   gapLabel: {
     alignSelf: 'flex-start',
-    marginLeft: DOT + theme.spacing(1.5),
+    marginLeft: COL_W + theme.spacing(1),
     color: theme.colors.text,
     fontSize: theme.font.body,
     backgroundColor: theme.colors.surfaceAlt,

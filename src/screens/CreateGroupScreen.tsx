@@ -5,6 +5,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
 import { useStore } from '../store';
 import { createGroup } from '../groups';
+import {
+  useConnected,
+  withTimeout,
+  WRITE_TIMEOUT_MS,
+  OFFLINE_MESSAGE,
+  TIMEOUT_MESSAGE,
+} from '../connection';
 import KeyboardAwareScreen from '../KeyboardAwareScreen';
 import { theme } from '../theme';
 
@@ -22,14 +29,20 @@ export default function CreateGroupScreen() {
   const [name, setName] = useState(displayName ? `${displayName}'s ${getDayOfWeek()} ride` : 'Group ride');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const connected = useConnected();
   const trimmed = name.trim();
 
   const submit = async () => {
-    if (!trimmed || !uid || !displayName || busy) return;
+    if (!trimmed || !uid || !displayName || busy || !connected) return;
     setBusy(true);
     setError(null);
     try {
-      const groupId = await createGroup(trimmed, uid, displayName);
+      const { avatarColor, avatarInitials } = useStore.getState();
+      const groupId = await withTimeout(
+        createGroup(trimmed, uid, displayName, avatarColor, avatarInitials),
+        WRITE_TIMEOUT_MS,
+        TIMEOUT_MESSAGE
+      );
       await setGroupId(groupId);
       // Reset so back doesn't return to this form.
       navigation.reset({ index: 0, routes: [{ name: 'Group' }] });
@@ -51,13 +64,14 @@ export default function CreateGroupScreen() {
         returnKeyType="done"
         onSubmitEditing={submit}
       />
+      {!connected && <Text style={styles.error}>{OFFLINE_MESSAGE}</Text>}
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable
-        style={[styles.button, (!trimmed || busy) && styles.buttonDisabled]}
-        disabled={!trimmed || busy}
+        style={[styles.button, (!trimmed || busy || !connected) && styles.buttonDisabled]}
+        disabled={!trimmed || busy || !connected}
         onPress={submit}
       >
-        <Text style={styles.buttonText}>{busy ? 'Creating…' : 'Create group'}</Text>
+        <Text style={styles.buttonText}>{busy ? 'Creating...' : 'Create group'}</Text>
       </Pressable>
     </KeyboardAwareScreen>
   );

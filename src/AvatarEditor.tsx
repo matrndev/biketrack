@@ -3,8 +3,17 @@
 // letters shown in the circle (max 2). Both persist via the store; clearing
 // the letters falls back to the display name's first letter on save.
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useStore, defaultInitials, DEFAULT_AVATAR_COLOR } from './store';
+import { updateMemberAvatar } from './groups';
 import { theme } from './theme';
 
 // Bright enough that the black initials stay readable on every swatch.
@@ -28,6 +37,8 @@ export default function AvatarEditor({ visible, onClose }: Props) {
   const avatarColor = useStore((s) => s.avatarColor);
   const avatarInitials = useStore((s) => s.avatarInitials);
   const setAvatar = useStore((s) => s.setAvatar);
+  const uid = useStore((s) => s.uid);
+  const groupId = useStore((s) => s.groupId);
   const [color, setColor] = useState(avatarColor ?? DEFAULT_AVATAR_COLOR);
   const [letters, setLetters] = useState(avatarInitials ?? defaultInitials(displayName));
 
@@ -43,6 +54,10 @@ export default function AvatarEditor({ visible, onClose }: Props) {
   const save = () => {
     const initials = letters.trim().toUpperCase().slice(0, 2) || defaultInitials(displayName);
     setAvatar(color, initials);
+    // Mirror the change to our group member node so other riders see it too.
+    // Fire-and-forget: RTDB queues the write while offline, and the local
+    // avatar is already saved either way.
+    if (groupId && uid) updateMemberAvatar(groupId, uid, color, initials).catch(() => {});
     onClose();
   };
 
@@ -50,49 +65,54 @@ export default function AvatarEditor({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.card} onPress={() => {}}>
-          <Text style={styles.title}>Edit avatar</Text>
+      {/* The modal window doesn't resize for the keyboard (edge-to-edge
+          Android), so pad the backdrop ourselves — the centered card then
+          slides up instead of hiding the letters input under the keyboard. */}
+      <KeyboardAvoidingView style={styles.avoider} behavior="padding">
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <Pressable style={styles.card} onPress={() => {}}>
+            <Text style={styles.title}>Edit avatar</Text>
 
-          <View style={[styles.preview, { backgroundColor: color }]}>
-            <Text style={styles.previewText}>{previewLetters}</Text>
-          </View>
+            <View style={[styles.preview, { backgroundColor: color }]}>
+              <Text style={styles.previewText}>{previewLetters}</Text>
+            </View>
 
-          <Text style={styles.sectionLabel}>Color</Text>
-          <View style={styles.swatches}>
-            {AVATAR_COLORS.map((c) => (
-              <Pressable
-                key={c}
-                accessibilityLabel={`Avatar color ${c}`}
-                style={[styles.swatch, { backgroundColor: c }]}
-                onPress={() => setColor(c)}
-              >
-                {c === color && <Text style={styles.swatchCheck}>✓</Text>}
+            <Text style={styles.sectionLabel}>Color</Text>
+            <View style={styles.swatches}>
+              {AVATAR_COLORS.map((c) => (
+                <Pressable
+                  key={c}
+                  accessibilityLabel={`Avatar color ${c}`}
+                  style={[styles.swatch, { backgroundColor: c }]}
+                  onPress={() => setColor(c)}
+                >
+                  {c === color && <Text style={styles.swatchCheck}>✓</Text>}
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.sectionLabel}>Letters</Text>
+            <TextInput
+              accessibilityLabel="Avatar letters"
+              value={letters}
+              onChangeText={(t) => setLetters(t.toUpperCase())}
+              maxLength={2}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              style={styles.lettersInput}
+            />
+
+            <View style={styles.actions}>
+              <Pressable style={[styles.button, styles.buttonOutline]} onPress={onClose}>
+                <Text style={styles.buttonOutlineText}>Cancel</Text>
               </Pressable>
-            ))}
-          </View>
-
-          <Text style={styles.sectionLabel}>Letters</Text>
-          <TextInput
-            accessibilityLabel="Avatar letters"
-            value={letters}
-            onChangeText={(t) => setLetters(t.toUpperCase())}
-            maxLength={2}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            style={styles.lettersInput}
-          />
-
-          <View style={styles.actions}>
-            <Pressable style={[styles.button, styles.buttonOutline]} onPress={onClose}>
-              <Text style={styles.buttonOutlineText}>Cancel</Text>
-            </Pressable>
-            <Pressable style={[styles.button, styles.buttonPrimary]} onPress={save}>
-              <Text style={styles.buttonPrimaryText}>Save</Text>
-            </Pressable>
-          </View>
+              <Pressable style={[styles.button, styles.buttonPrimary]} onPress={save}>
+                <Text style={styles.buttonPrimaryText}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -101,6 +121,7 @@ const PREVIEW = 72;
 const SWATCH = 40;
 
 const styles = StyleSheet.create({
+  avoider: { flex: 1 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
