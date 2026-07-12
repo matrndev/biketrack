@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
@@ -245,7 +247,16 @@ export default function GroupScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        {trackErr && <Text style={styles.trackErr}>⚠ {trackErr}</Text>}
+        {trackErr && (
+          <View style={styles.trackErrRow}>
+            <FontAwesomeIcon
+              icon={faTriangleExclamation}
+              size={14}
+              color={theme.colors.warning}
+            />
+            <Text style={styles.trackErr}>{trackErr}</Text>
+          </View>
+        )}
         <View style={styles.buttonRow}>
           {isLeader ? (
             <Pressable
@@ -413,12 +424,19 @@ const styles = StyleSheet.create({
     fontSize: theme.font.small,
     fontFamily: theme.family.regular,
   },
+  trackErrRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.75),
+    marginBottom: theme.spacing(1),
+  },
   trackErr: {
     color: theme.colors.warning,
     fontSize: theme.font.small,
     fontFamily: theme.family.regular,
     textAlign: 'center',
-    marginBottom: theme.spacing(1),
+    flexShrink: 1,
   },
   leaderBadge: {
     color: theme.colors.accent,

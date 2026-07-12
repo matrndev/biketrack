@@ -21,6 +21,8 @@ import {
   Vibration,
 } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import { faBatteryHalf } from '@fortawesome/free-solid-svg-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
@@ -38,6 +40,13 @@ import {
 import CommsDock, { severityColor } from '../CommsDock';
 import RideMap from '../RideMap';
 import { useRideAlerts, Straggler } from '../alerts';
+import {
+  OFFLINE_MESSAGE,
+  TIMEOUT_MESSAGE,
+  WRITE_TIMEOUT_MS,
+  useConnected,
+  withTimeout,
+} from '../connection';
 import { useServerTimeOffset, serverNow, agoLabel } from '../time';
 import { theme } from '../theme';
 
@@ -77,6 +86,7 @@ export default function RideScreen() {
   const uid = useStore((s) => s.uid);
   const groupId = useStore((s) => s.groupId);
   const group = useGroup(groupId);
+  const connected = useConnected();
   const offset = useServerTimeOffset();
   const { comms, loaded: commsLoaded } = useComms(groupId, offset);
   useCommsAnnouncer(comms, commsLoaded, uid, offset, group?.members ?? {});
@@ -89,6 +99,10 @@ export default function RideScreen() {
   const [railH, setRailH] = useState(0);
   // Driven by the switch on the Settings screen (shared via the store).
   const keepAwake = useStore((s) => s.keepAwake);
+  // When enabled, RideMap is not mounted at all, preventing style and tile
+  // downloads. The train view expands to use the available width instead.
+  const maplessMode = useStore((s) => s.maplessMode);
+  const commsButtonPosition = useStore((s) => s.commsButtonPosition);
   // Per-rider "too far" threshold, set on the Settings screen. Also drives the
   // wide-gap highlight in the rail so the two always agree.
   const gapAlertMeters = useStore((s) => s.gapAlertMeters);
@@ -168,11 +182,17 @@ export default function RideScreen() {
       Alert.alert('No GPS fix yet', 'Comms are pinned to your position — wait for GPS.');
       return;
     }
+    if (!connected) {
+      Alert.alert('Could not send', OFFLINE_MESSAGE);
+      return;
+    }
     Vibration.vibrate(60);
     const dedup = useStore.getState().commsDedup;
-    sendComm(groupId, uid, type, fix.lat, fix.lng, offset, dedup).catch((e: any) =>
-      Alert.alert('Could not send', String(e?.message ?? e))
-    );
+    withTimeout(
+      sendComm(groupId, uid, type, fix.lat, fix.lng, offset, dedup),
+      WRITE_TIMEOUT_MS,
+      TIMEOUT_MESSAGE
+    ).catch((e: any) => Alert.alert('Could not send', String(e?.message ?? e)));
   };
 
   const riderRow = (memberId: string, noSignal: boolean) => {
@@ -230,16 +250,33 @@ export default function RideScreen() {
                 <Text style={styles.speedUnit}> km/h</Text>
               </Text>
               {batteryPct != null && (
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.battText,
-                    batteryPct <= 30 && styles.battWarn,
-                    batteryPct <= 15 && styles.battLow,
-                  ]}
+                <View
+                  style={styles.battRow}
+                  accessible
+                  accessibilityLabel={`Battery ${batteryPct} percent`}
                 >
-                  {batteryPct}%
-                </Text>
+                  <FontAwesomeIcon
+                    icon={faBatteryHalf}
+                    size={15}
+                    color={
+                      batteryPct <= 15
+                        ? theme.colors.danger
+                        : batteryPct <= 30
+                          ? theme.colors.warning
+                          : theme.colors.text
+                    }
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.battText,
+                      batteryPct <= 30 && styles.battWarn,
+                      batteryPct <= 15 && styles.battLow,
+                    ]}
+                  >
+                    {batteryPct}%
+                  </Text>
+                </View>
               )}
             </>
           )}
@@ -262,7 +299,11 @@ export default function RideScreen() {
               key={c.id}
               style={[styles.commChip, { borderColor: severityColor(c.severity) }]}
             >
-              <Text style={styles.commChipIcon}>{COMM_DEFS[c.type].icon}</Text>
+              <FontAwesomeIcon
+                icon={COMM_DEFS[c.type].icon}
+                size={24}
+                color={severityColor(c.severity)}
+              />
               <View>
                 <Text style={styles.commChipLabel}>
                   {COMM_DEFS[c.type].label}
@@ -281,14 +322,13 @@ export default function RideScreen() {
         </ScrollView>
       )}
 
-      {/* Train rail on the left, map filling the rest. The dock floats over
-          both — the gap banner stacks below it, so alerts never cover the
-          comms button. Gap segments are fitted to the measured rail height so
+      {/* Train rail on the left, map filling the rest. Gap segments are fitted
+          to the measured rail height so
           the last rider is always on screen; the ScrollView only kicks in if
           even the minimum-height train can't fit (many riders, tiny screen). */}
       <View style={styles.body}>
         <ScrollView
-          style={styles.rail}
+          style={[styles.rail, maplessMode && styles.railMapless]}
           contentContainerStyle={styles.container}
           onLayout={(e) => setRailH(e.nativeEvent.layout.height)}
         >
@@ -339,16 +379,18 @@ export default function RideScreen() {
           )}
         </ScrollView>
 
-        <RideMap
-          riders={located}
-          members={group.members}
-          leaderId={group.meta.leaderId}
-          uid={uid}
-          pins={pins}
-        />
-
-        <CommsDock onSend={sendAlert} />
+        {!maplessMode && (
+          <RideMap
+            riders={located}
+            members={group.members}
+            leaderId={group.meta.leaderId}
+            uid={uid}
+            pins={pins}
+          />
+        )}
       </View>
+
+      <CommsDock onSend={sendAlert} position={commsButtonPosition} />
 
       {/* Auto-dismissing alert banner (dropped connection / too far) — top
           only, so it never covers the comms dock or the gap labels in focus. */}
@@ -396,6 +438,7 @@ const styles = StyleSheet.create({
   },
   body: { flex: 1, flexDirection: 'row' },
   rail: { width: 140, flexGrow: 0 },
+  railMapless: { width: '100%', flexGrow: 1 },
   commsStrip: { flexGrow: 0 },
   commsStripContent: {
     paddingHorizontal: theme.spacing(2),
@@ -412,7 +455,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing(1.5),
     paddingVertical: theme.spacing(1),
   },
-  commChipIcon: { fontSize: 24 },
   commChipLabel: {
     color: theme.colors.text,
     fontSize: theme.font.body,
@@ -497,6 +539,11 @@ const styles = StyleSheet.create({
     color: theme.colors.textDim,
     fontSize: 12,
     fontFamily: theme.family.medium,
+  },
+  battRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
   },
   battText: {
     color: theme.colors.text,

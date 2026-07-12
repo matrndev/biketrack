@@ -5,6 +5,16 @@
 // `expiresAt`. Keying by dedupKey makes the dedup check and the write a single
 // atomic operation (no read-then-push race).
 import { useEffect, useRef, useState } from 'react';
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
+import {
+  faAnglesDown,
+  faArrowLeft,
+  faArrowRight,
+  faCarSide,
+  faHand,
+  faLocationDot,
+  faWarning,
+} from '@fortawesome/free-solid-svg-icons';
 import {
   ref,
   onValue,
@@ -21,7 +31,7 @@ import { useStore } from './store';
 import { speak } from './speech';
 
 export type CommType =
-  | 'pothole'
+  | 'danger'
   | 'slowing'
   | 'stopping'
   | 'regroup'
@@ -49,7 +59,7 @@ export type Comm = {
 
 export type CommDef = {
   label: string;
-  icon: string;
+  icon: IconDefinition;
   /** TTS phrase spoken on every recipient when the comm lands. */
   spoken: string;
   /** TTS phrase for "reached the pin" — only geo-static types have one. */
@@ -60,63 +70,63 @@ export type CommDef = {
 };
 
 export const COMM_DEFS: Record<CommType, CommDef> = {
-  pothole: {
-    label: 'Pothole',
-    icon: '🕳️',
-    spoken: 'Pothole',
-    approach: 'Pothole ahead',
+  danger: {
+    label: 'Danger',
+    icon: faWarning,
+    spoken: 'Danger',
+    approach: 'Danger ahead',
     severity: 'critical',
     ttlMs: 10 * 60_000,
   },
   car_back: {
     label: 'Car back',
-    icon: '🚗',
+    icon: faCarSide,
     spoken: 'Car back',
     severity: 'critical',
     ttlMs: 45_000,
   },
   stopping: {
     label: 'Stopping',
-    icon: '🛑',
+    icon: faHand,
     spoken: 'Stopping',
     severity: 'critical',
     ttlMs: 2 * 60_000,
   },
   slowing: {
     label: 'Slowing',
-    icon: '🐢',
+    icon: faAnglesDown,
     spoken: 'Slowing down',
     severity: 'important',
     ttlMs: 60_000,
   },
   turn_left: {
     label: 'Turn left',
-    icon: '⬅️',
+    icon: faArrowLeft,
     spoken: 'Turn left',
     approach: 'Left turn ahead',
-    severity: 'important',
+    severity: 'low',
     ttlMs: 3 * 60_000,
   },
   turn_right: {
     label: 'Turn right',
-    icon: '➡️',
+    icon: faArrowRight,
     spoken: 'Turn right',
     approach: 'Right turn ahead',
-    severity: 'important',
+    severity: 'low',
     ttlMs: 3 * 60_000,
   },
   regroup: {
     label: 'Regroup',
-    icon: '📍',
+    icon: faLocationDot,
     spoken: 'Regroup here',
     approach: 'Regroup point ahead',
-    severity: 'low',
+    severity: 'important',
     ttlMs: 5 * 60_000,
   },
 };
 
 /** Within this range of a pin (and closing in) the approach phrase is spoken. */
-export const APPROACH_METERS = 40;
+export const APPROACH_METERS = 20;
 
 // Standard geohash base32. Precision 7 ≈ 150 m × 150 m cells — the dedup
 // radius from PLAN §5.4 ("geohash@precision≈150m").

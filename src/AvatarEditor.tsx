@@ -12,6 +12,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import { faCheck } from '@fortawesome/free-solid-svg-icons';
 import { useStore, defaultInitials, DEFAULT_AVATAR_COLOR } from './store';
 import { updateMemberAvatar } from './groups';
 import { theme } from './theme';
@@ -86,7 +88,10 @@ export default function AvatarEditor({ visible, onClose }: Props) {
                   style={[styles.swatch, { backgroundColor: c }]}
                   onPress={() => setColor(c)}
                 >
-                  {c === color && <Text style={styles.swatchCheck}>✓</Text>}
+                  {/* Black check on the selected swatch — visible on every
+                      bright color, unlike a border, which vanishes on the
+                      white swatch. */}
+                  {c === color && <FontAwesomeIcon icon={faCheck} size={20} color="#000000" />}
                 </Pressable>
               ))}
             </View>
@@ -174,13 +179,6 @@ const styles = StyleSheet.create({
     borderRadius: SWATCH / 2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // Black check on the selected swatch — visible on every bright color,
-  // unlike a border, which vanishes on the white swatch.
-  swatchCheck: {
-    color: '#000000',
-    fontSize: 20,
-    fontFamily: theme.family.extraBold,
   },
   lettersInput: {
     alignSelf: 'flex-start',

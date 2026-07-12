@@ -2,10 +2,13 @@
 // that opens a full-screen menu of thumb-sized one-tap alert buttons. Meant to
 // be used at speed with one glove: huge targets, high contrast, menu anchored
 // to the bottom with the most safety-critical buttons closest to the thumb.
-import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import { faComment } from '@fortawesome/free-solid-svg-icons';
 import { COMM_DEFS, CommType, Severity } from './comms';
+import { type CommsButtonPosition, useStore } from './store';
 import { theme } from './theme';
 
 export function severityColor(severity: Severity): string {
@@ -20,46 +23,94 @@ export function severityColor(severity: Severity): string {
 }
 
 // Bottom-anchored grid, two per row: calmest at the top, critical at the
-// bottom where the thumb already is. Pothole (the most-fired one) gets the
+// bottom where the thumb already is. Danger (the most-fired one) gets the
 // full-width slot right above Close.
 const MENU_ORDER: CommType[] = [
-  'regroup',
-  'slowing',
   'turn_left',
   'turn_right',
+  'regroup',
+  'slowing',
   'stopping',
   'car_back',
-  'pothole',
+  'danger',
 ];
 
 const FAB = 68;
+const AUTO_CLOSE_MS = 10_000;
+const CLOSE_BORDER_WIDTH = 3;
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 type Props = {
   onSend: (type: CommType) => void;
+  position: CommsButtonPosition;
 };
 
-export default function CommsDock({ onSend }: Props) {
+export default function CommsDock({ onSend, position }: Props) {
   const [open, setOpen] = useState(false);
+  const [closeSize, setCloseSize] = useState({ width: 0, height: 0 });
+  const commsAutoClose = useStore((s) => s.commsAutoClose);
+  const countdown = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    countdown.stopAnimation();
+    countdown.setValue(0);
+
+    if (!open || !commsAutoClose) return;
+
+    Animated.timing(countdown, {
+      toValue: 1,
+      duration: AUTO_CLOSE_MS,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) setOpen(false);
+    });
+
+    return () => countdown.stopAnimation();
+  }, [commsAutoClose, countdown, open]);
 
   const fire = (type: CommType) => {
     setOpen(false);
     onSend(type);
   };
 
+  const closeBorderInset = CLOSE_BORDER_WIDTH / 2;
+  const closeBorderRadius = Math.min(
+    theme.radius.md,
+    Math.max(0, (closeSize.height - CLOSE_BORDER_WIDTH) / 2),
+  );
+  const closeBorderPath = [
+    `M ${closeSize.width / 2} ${closeBorderInset}`,
+    `H ${closeBorderInset + closeBorderRadius}`,
+    `A ${closeBorderRadius} ${closeBorderRadius} 0 0 0 ${closeBorderInset} ${closeBorderInset + closeBorderRadius}`,
+    `V ${closeSize.height - closeBorderInset - closeBorderRadius}`,
+    `A ${closeBorderRadius} ${closeBorderRadius} 0 0 0 ${closeBorderInset + closeBorderRadius} ${closeSize.height - closeBorderInset}`,
+    `H ${closeSize.width - closeBorderInset - closeBorderRadius}`,
+    `A ${closeBorderRadius} ${closeBorderRadius} 0 0 0 ${closeSize.width - closeBorderInset} ${closeSize.height - closeBorderInset - closeBorderRadius}`,
+    `V ${closeBorderInset + closeBorderRadius}`,
+    `A ${closeBorderRadius} ${closeBorderRadius} 0 0 0 ${closeSize.width - closeBorderInset - closeBorderRadius} ${closeBorderInset}`,
+    `H ${closeSize.width / 2}`,
+  ].join(' ');
+  const closeBorderLength =
+    2 * (closeSize.width + closeSize.height - 2 * CLOSE_BORDER_WIDTH) +
+    (2 * Math.PI - 8) * closeBorderRadius;
+
   return (
     <>
       <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        style={({ pressed }) => [
+          styles.fab,
+          position === 'left'
+            ? styles.fabLeft
+            : position === 'right'
+              ? styles.fabRight
+              : styles.fabCenter,
+          pressed && styles.fabPressed,
+        ]}
         onPress={() => setOpen(true)}
         hitSlop={8}
         accessibilityLabel="Open comms menu"
       >
-        <Svg width={32} height={32} viewBox="0 0 24 24">
-          <Path
-            fill="#000000"
-            d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"
-          />
-        </Svg>
+        <FontAwesomeIcon icon={faComment} size={32} color="#000000" />
       </Pressable>
 
       <Modal
@@ -81,19 +132,55 @@ export default function CommsDock({ onSend }: Props) {
                     style={({ pressed }) => [
                       styles.button,
                       { borderColor: severityColor(def.severity) },
-                      type === 'pothole' && styles.buttonWide,
+                      type === 'danger' && styles.buttonWide,
                       pressed && styles.buttonPressed,
                     ]}
                     onPress={() => fire(type)}
                   >
-                    <Text style={styles.buttonIcon}>{def.icon}</Text>
+                    <FontAwesomeIcon
+                      icon={def.icon}
+                      size={30}
+                      color={severityColor(def.severity)}
+                    />
                     <Text style={styles.buttonLabel}>{def.label}</Text>
                   </Pressable>
                 );
               })}
             </View>
-            <Pressable style={styles.closeButton} onPress={() => setOpen(false)}>
+            <Pressable
+              style={styles.closeButton}
+              onPress={() => setOpen(false)}
+              onLayout={({ nativeEvent }) => setCloseSize(nativeEvent.layout)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                commsAutoClose ? 'Close comms menu, closes automatically after 10 seconds' : 'Close comms menu'
+              }
+            >
               <Text style={styles.closeLabel}>Close</Text>
+              {closeSize.width > 0 && closeSize.height > 0 && (
+                <Svg pointerEvents="none" style={StyleSheet.absoluteFill}>
+                  <Path
+                    d={closeBorderPath}
+                    fill="none"
+                    stroke={theme.colors.border}
+                    strokeWidth={CLOSE_BORDER_WIDTH}
+                  />
+                  {commsAutoClose && (
+                    <AnimatedPath
+                      d={closeBorderPath}
+                      fill="none"
+                      stroke={theme.colors.accent}
+                      strokeWidth={CLOSE_BORDER_WIDTH}
+                      strokeLinecap="round"
+                      strokeDasharray={closeBorderLength}
+                      strokeDashoffset={countdown.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -closeBorderLength],
+                      })}
+                    />
+                  )}
+                </Svg>
+              )}
             </Pressable>
           </View>
         </Pressable>
@@ -105,7 +192,6 @@ export default function CommsDock({ onSend }: Props) {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    alignSelf: 'center',
     bottom: theme.spacing(5),
     width: FAB,
     height: FAB,
@@ -114,7 +200,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 6,
+    zIndex: 10,
   },
+  fabLeft: { left: theme.spacing(3) },
+  fabCenter: {
+    left: '50%',
+    transform: [{ translateX: -FAB / 2 }],
+  },
+  fabRight: { right: theme.spacing(3) },
   fabPressed: { opacity: 0.8 },
   overlay: {
     flex: 1,
@@ -142,7 +235,6 @@ const styles = StyleSheet.create({
   },
   buttonWide: { flexBasis: '100%' },
   buttonPressed: { backgroundColor: theme.colors.surfaceAlt },
-  buttonIcon: { fontSize: 30 },
   buttonLabel: {
     color: theme.colors.text,
     fontSize: theme.font.h2,
@@ -153,6 +245,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     paddingVertical: theme.spacing(2),
     alignItems: 'center',
+    overflow: 'hidden',
   },
   closeLabel: {
     color: theme.colors.textDim,

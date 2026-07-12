@@ -1,5 +1,7 @@
 import React from 'react';
 import { Text, Pressable, StyleSheet, Alert } from 'react-native';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import { faGear } from '@fortawesome/free-solid-svg-icons';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useStore } from './store';
@@ -93,17 +95,10 @@ const logoutStyles = StyleSheet.create({
 function SettingsButton({ onPress }: { onPress: () => void }) {
   return (
     <Pressable onPress={onPress} hitSlop={8}>
-      <Text style={settingsStyles.icon}>⚙</Text>
+      <FontAwesomeIcon icon={faGear} size={22} color={theme.colors.text} />
     </Pressable>
   );
 }
-
-const settingsStyles = StyleSheet.create({
-  icon: {
-    color: theme.colors.text,
-    fontSize: 22,
-  },
-});
 
 export default function Navigation() {
   // Gate purely on displayName: no name yet → onboard; otherwise → home.

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Text, Pressable, StyleSheet, ScrollView, View } from 'react-native';
 import { ref, set, onValue, serverTimestamp } from '@react-native-firebase/database';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import { faPencil } from '@fortawesome/free-solid-svg-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation';
@@ -104,7 +106,7 @@ export default function HomeScreen() {
               style={styles.editBadge}
               onPress={() => setEditingAvatar(true)}
             >
-              <Text style={styles.editBadgeText}>✎</Text>
+              <FontAwesomeIcon icon={faPencil} size={11} color={theme.colors.text} />
             </Pressable>
           </View>
           <View style={styles.headerText}>

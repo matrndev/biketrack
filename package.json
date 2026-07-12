@@ -4,6 +4,9 @@
   "main": "index.ts",
   "dependencies": {
     "@expo-google-fonts/roboto-condensed": "^0.4.2",
+    "@fortawesome/fontawesome-svg-core": "^7.3.0",
+    "@fortawesome/free-solid-svg-icons": "^7.3.0",
+    "@fortawesome/react-native-fontawesome": "^1.0.0",
     "@maplibre/maplibre-react-native": "^11.3.6",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-firebase/app": "^25.1.0",
