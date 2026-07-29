@@ -48,7 +48,11 @@ export function setupPresence(groupId: string, uid: string): () => void {
   });
 
   const heartbeat = setInterval(() => {
-    update(presRef, { updatedAt: serverTimestamp() }).catch(() => {});
+    // A server-acknowledged heartbeat is stronger evidence of availability
+    // than the socket-level onDisconnect flag. In particular, Android can
+    // suspend the foreground JS socket while the background location service
+    // is still able to write successfully.
+    update(presRef, { online: true, updatedAt: serverTimestamp() }).catch(() => {});
   }, HEARTBEAT_MS);
 
   return () => {

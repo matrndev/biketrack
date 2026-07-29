@@ -16,7 +16,7 @@ export default function OnboardingScreen() {
   return (
     <KeyboardAwareScreen centered contentStyle={styles.container}>
       <Text style={styles.title}>BikeTrack</Text>
-      <Text style={styles.subtitle}>What should the group call you?</Text>
+      <Text style={styles.subtitle}>Please create your user profile</Text>
       <TextInput
         style={styles.input}
         value={name}

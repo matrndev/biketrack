@@ -4,6 +4,7 @@
 // persists doesn't nag every second. Detection re-arms when the condition
 // clears (with hysteresis for the gap, so hovering at the threshold is quiet).
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { ref, onValue } from '@react-native-firebase/database';
 import { db } from './firebase';
 import { serverNow } from './time';
@@ -66,20 +67,44 @@ export function useRideAlerts(
     []
   );
 
-  // Our own connection, straight from the RTDB socket. Starts as false while
-  // connecting, so only a true → false transition counts as a drop.
+  // Our own connection, straight from the RTDB socket. Mobile OSes routinely
+  // suspend this socket while the app is backgrounded, so only report a loss
+  // that remains down for a full stale window while the app is active.
   const connected = useRef(true);
+  const ownDropTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    const cancelOwnDrop = () => {
+      if (ownDropTimer.current) clearTimeout(ownDropTimer.current);
+      ownDropTimer.current = null;
+    };
+    const armOwnDrop = () => {
+      cancelOwnDrop();
+      if (AppState.currentState !== 'active') return;
+      ownDropTimer.current = setTimeout(() => {
+        ownDropTimer.current = null;
+        if (!connected.current && AppState.currentState === 'active') {
+          raise("You're offline — the group can't see you", 'Connection lost', 'danger');
+        }
+      }, STALE_MS);
+    };
+
     let wasConnected: boolean | null = null;
     const unsub = onValue(ref(db, '.info/connected'), (snap) => {
       const now = !!snap.val();
       connected.current = now;
-      if (wasConnected === true && !now) {
-        raise("You're offline — the group can't see you", 'Connection lost', 'danger');
-      }
+      if (now) cancelOwnDrop();
+      else if (wasConnected === true) armOwnDrop();
       wasConnected = now;
     });
-    return () => unsub();
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') cancelOwnDrop();
+      else if (!connected.current) armOwnDrop();
+    });
+    return () => {
+      unsub();
+      appStateSub.remove();
+      cancelOwnDrop();
+    };
   }, [raise]);
 
   // Others + gap are evaluated on a 1 s clock over the latest props (staleness
@@ -102,7 +127,10 @@ export function useRideAlerts(
           if (id === uid) continue;
           const p = group.presence[id];
           if (!p || p.updatedAt == null) continue; // never checked in yet
-          const isDropped = p.online === false || now - p.updatedAt > STALE_MS;
+          // `online=false` is an RTDB socket event, not proof that the rider's
+          // background service stopped reaching us. Alert only when all
+          // successful presence writes have actually gone stale.
+          const isDropped = now - p.updatedAt > STALE_MS;
           if (isDropped && !droppedRiders.current.has(id)) {
             droppedRiders.current.add(id);
             raise(`${member.name} lost connection`, `${member.name} lost connection`, 'danger');

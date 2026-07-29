@@ -11,7 +11,7 @@ Features I'd like to implement:
 - location will show up as pins on a map
 - location will show up also as a "train view", showing gaps in meters inbetween riders (one vertical line with rider circles on it), i think here for now we will use straight-line distance calculation
 - big comms buttons that can be easily tapped when riding
-    - e.g. pothole, slowing, stopping, regroup here, turning left/right, car back
+    - e.g. danger, slowing, stopping, regroup here, turning left/right, car back
     - drops a pin at the location where button was tapped and notifies people also when they get infront of the pin
     - spoken notifications
     - ~could also have simple yes/no questions and people would respond with a tap~
@@ -38,6 +38,6 @@ Biggest problems that need to be solved:
     - this is a given
     - make sure the phone doesn't kill our app (especially when in screen-off mode)
     - gps tracking must be reliable
-- comms dedup -- if there are two same for example pothole alerts in one place, only show one
+- comms dedup -- if there are two same for example danger alerts in one place, only show one
 
 Now, make a PLAN.md. If anything needs clarification, now is the time to ask.

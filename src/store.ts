@@ -9,10 +9,15 @@ const NAME_KEY = 'biketrack.displayName';
 const GROUP_KEY = 'biketrack.groupId';
 const DEDUP_KEY = 'biketrack.commsDedup';
 const GAP_KEY = 'biketrack.gapAlertMeters';
+const MAPLESS_KEY = 'biketrack.maplessMode';
+const COMMS_POSITION_KEY = 'biketrack.commsButtonPosition';
+const COMMS_AUTO_CLOSE_KEY = 'biketrack.commsAutoClose';
 const AVATAR_COLOR_KEY = 'biketrack.avatarColor';
 const AVATAR_INITIALS_KEY = 'biketrack.avatarInitials';
 
 export const DEFAULT_AVATAR_COLOR = '#4C9EFF';
+
+export type CommsButtonPosition = 'left' | 'center' | 'right';
 
 /** Fallback avatar letters when none are set: first letter of the name. */
 export const defaultInitials = (name: string | null) =>
@@ -39,8 +44,14 @@ type State = {
   lastFix: Fix | null;
   /** Ride setting: keep the display awake. Session-only, not persisted. */
   keepAwake: boolean;
+  /** Ride setting: skip loading the map and its tiles to save data. Persisted. */
+  maplessMode: boolean;
   /** Ride setting: merge identical nearby comms into one pin. Persisted. */
   commsDedup: boolean;
+  /** Horizontal position of the bottom comms button. Persisted. */
+  commsButtonPosition: CommsButtonPosition;
+  /** Ride setting: close the comms menu 10 seconds after opening. Persisted. */
+  commsAutoClose: boolean;
   /** Ride setting: gap size (m) that triggers the "too far" alert. Persisted. */
   gapAlertMeters: number;
   /** Avatar background color (hex). Persisted; null → DEFAULT_AVATAR_COLOR. */
@@ -50,7 +61,10 @@ type State = {
   setUid: (uid: string | null) => void;
   setAvatar: (color: string, initials: string) => Promise<void>;
   setKeepAwake: (keepAwake: boolean) => void;
+  setMaplessMode: (maplessMode: boolean) => Promise<void>;
   setCommsDedup: (commsDedup: boolean) => Promise<void>;
+  setCommsButtonPosition: (position: CommsButtonPosition) => Promise<void>;
+  setCommsAutoClose: (commsAutoClose: boolean) => Promise<void>;
   setGapAlertMeters: (gapAlertMeters: number) => Promise<void>;
   setTracking: (tracking: boolean) => void;
   setLastFix: (fix: Fix) => void;
@@ -69,7 +83,10 @@ export const useStore = create<State>((set) => ({
   tracking: false,
   lastFix: null,
   keepAwake: false,
+  maplessMode: false,
   commsDedup: true,
+  commsButtonPosition: 'center',
+  commsAutoClose: true,
   gapAlertMeters: DEFAULT_GAP_ALERT_METERS,
   avatarColor: null,
   avatarInitials: null,
@@ -82,9 +99,21 @@ export const useStore = create<State>((set) => ({
     set({ avatarColor: color, avatarInitials: initials });
   },
   setKeepAwake: (keepAwake) => set({ keepAwake }),
+  setMaplessMode: async (maplessMode) => {
+    await AsyncStorage.setItem(MAPLESS_KEY, maplessMode ? '1' : '0');
+    set({ maplessMode });
+  },
   setCommsDedup: async (commsDedup) => {
     await AsyncStorage.setItem(DEDUP_KEY, commsDedup ? '1' : '0');
     set({ commsDedup });
+  },
+  setCommsButtonPosition: async (commsButtonPosition) => {
+    await AsyncStorage.setItem(COMMS_POSITION_KEY, commsButtonPosition);
+    set({ commsButtonPosition });
+  },
+  setCommsAutoClose: async (commsAutoClose) => {
+    await AsyncStorage.setItem(COMMS_AUTO_CLOSE_KEY, commsAutoClose ? '1' : '0');
+    set({ commsAutoClose });
   },
   setGapAlertMeters: async (gapAlertMeters) => {
     await AsyncStorage.setItem(GAP_KEY, String(gapAlertMeters));
@@ -106,11 +135,14 @@ export const useStore = create<State>((set) => ({
     set({ displayName: null, groupId: null, avatarColor: null, avatarInitials: null });
   },
   hydrate: async () => {
-    const [name, groupId, dedup, gap, avatarColor, avatarInitials] = await Promise.all([
+    const [name, groupId, dedup, gap, mapless, commsPosition, commsAutoClose, avatarColor, avatarInitials] = await Promise.all([
       AsyncStorage.getItem(NAME_KEY),
       AsyncStorage.getItem(GROUP_KEY),
       AsyncStorage.getItem(DEDUP_KEY),
       AsyncStorage.getItem(GAP_KEY),
+      AsyncStorage.getItem(MAPLESS_KEY),
+      AsyncStorage.getItem(COMMS_POSITION_KEY),
+      AsyncStorage.getItem(COMMS_AUTO_CLOSE_KEY),
       AsyncStorage.getItem(AVATAR_COLOR_KEY),
       AsyncStorage.getItem(AVATAR_INITIALS_KEY),
     ]);
@@ -120,6 +152,12 @@ export const useStore = create<State>((set) => ({
       groupId,
       commsDedup: dedup !== '0',
       gapAlertMeters: Number.isFinite(gapMeters) && gapMeters > 0 ? gapMeters : DEFAULT_GAP_ALERT_METERS,
+      maplessMode: mapless === '1',
+      commsButtonPosition:
+        commsPosition === 'left' || commsPosition === 'right'
+          ? commsPosition
+          : 'center',
+      commsAutoClose: commsAutoClose !== '0',
       avatarColor,
       avatarInitials,
       hydrated: true,

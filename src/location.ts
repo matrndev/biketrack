@@ -35,8 +35,9 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
   };
   useStore.getState().setLastFix(fix);
 
-  // In a group → publish presence. update() (not set) so the online flag
-  // maintained by presence.ts survives.
+  // In a group → publish presence. A successful background write proves
+  // that this rider is reachable even if Android suspended the foreground JS
+  // socket and its onDisconnect handler temporarily set online=false.
   const { uid, groupId } = useStore.getState();
   if (uid && groupId) {
     await update(ref(db, `groups/${groupId}/presence/${uid}`), {
@@ -47,6 +48,7 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
       accuracy: fix.accuracy,
       battery: fix.battery,
       sharingLocation: true,
+      online: true,
       updatedAt: serverTimestamp(),
     }).catch(() => {}); // offline blip — RTDB retries on reconnect anyway
   }

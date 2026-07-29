@@ -2,7 +2,7 @@
 
 A group-riding companion app. Each rider mounts their phone on the handlebars (or runs a
 sound-only, screen-off mode). The group sees each other's live position on a map and a
-"train view," and fires big one-tap comms ("pothole", "car back", "regroup") that drop
+"train view," and fires big one-tap comms ("danger", "car back", "regroup") that drop
 geo-pinned, spoken alerts to everyone.
 
 ---
@@ -91,7 +91,7 @@ groups/
         updatedAt          (server ts) # heartbeat
     comms/
       {commsId}/
-        type               "pothole" | "slowing" | "stopping" | "regroup"
+        type               "danger" | "slowing" | "stopping" | "regroup"
                             | "turn_left" | "turn_right" | "car_back"
         severity           "critical" | "important" | "low"
         lat, lng
@@ -138,7 +138,7 @@ server-side when the socket dies → this powers the "connection dropped" alert.
 
 ### 5.4 Comms buttons
 - Large, thumb-sized, high-contrast grid — usable at speed, one tap.
-- Types: pothole, slowing, stopping, regroup here, turn left, turn right, car back.
+- Types: danger, slowing, stopping, regroup here, turn left, turn right, car back.
 - On tap: capture current lat/lng → write a `comms/{id}` with type, **severity**, server
   `createdAt`, `expiresAt` (type-dependent TTL), and a `dedupKey`.
 - **Spoken notification** via expo-speech on every recipient (respecting audio mode/severity).
@@ -149,7 +149,7 @@ server-side when the socket dies → this powers the "connection dropped" alert.
   low = subtle chime.
 
 #### Dedup (§comms)
-- Two riders hitting "pothole" at ~the same spot should show **one** pin.
+- Two riders hitting "danger" at ~the same spot should show **one** pin.
 - `dedupKey = "{type}:{geohash@precision≈150m}"`. Before write, check for an existing
   non-expired comms with the same `dedupKey`; if found, **increment `count`** and refresh
   `expiresAt` instead of creating a new pin.
