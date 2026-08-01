@@ -1,5 +1,5 @@
 # BikeTrack
-This app allows you to create a group with your biker group and track every person's location, speed, and other important info.
+This app allows you to create a biker (cyclist) group and track every person's location, speed, and other important info.
 
 At a glance, you can see how far apart everyone is and if you haven't lost anybody, eliminating the need to constantly look over your shoulder.
 
