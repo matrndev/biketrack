@@ -13,6 +13,13 @@ It also has a menu for quick communication, which has a few preset buttons for i
 * Group joining via QR or 6-digit code
 * Automatic alerts when someone is too far behind/connection lost
 
+### Demo & Testing
+Demo video of a simulated ride can be found [here](https://cdn.hackclub.com/019fbb5b-c580-7f3f-aed9-e78703e70e3b/biketrack_demo.mp4).
+
+The app was tested in a real-world deployment on multiple devices.
+
+Currently, the biggest issue is reliance on a stable mobile data connection. Unfortunately, due to coverage issues in some areas, the data connection can sometimes drop out and cause connection delays or errors. However, the app tries to periodically reconnect and never crashes, neither it ever needs a restart to start working again after a dropout.
+
 ## Setup
 Download & run the APK of the latest release, which can be found in the Releases section of this repository.
 
